@@ -1,0 +1,9 @@
+# Raw downloads — regenerate with ./fetch_la.py
+data/raw/
+data/*.part
+# Page data — regenerate with ./analyze_la.py; published as a release asset, not committed
+docs/data/
+
+__pycache__/
+*.pyc
+.DS_Store
