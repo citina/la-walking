@@ -10,7 +10,8 @@ Only the walking question. The driving question ("can I park here?") was looked 
 LA doesn't publish its curb rules (meter hours, time limits, permit hours, tow-away, closures), so the answer would rest
 on guesses. LA Street Rules keeps the parking side, from tickets.
 
-Written 2026-09-27. Milestones 1–3 (the map, police reports, the High Injury Network) built 2026-09-29; see §5.
+Written 2026-09-27. Milestones 1–4 (the map, police reports, the High Injury Network, people walking hit) built
+2026-09-29; see §5.
 
 ---
 
@@ -187,15 +188,24 @@ hoods.json       docs/hoods.json (committed)  copied from ticket-clock/docs/stre
   Downtown and in Venice): 873 KB, 273 KB gzipped.
 - **Calls**: per reporting district, calls per group (daylight / dark) and their half hours; the district outlines in
   a separate file loaded when the calls row or layer opens.
-- **Placing crashes** (CCRS rows without coordinates): find the intersection of `PrimaryRoad` and `SecondaryRoad` in the
-  centerlines (names normalized like the ticket addresses on LA Street Rules: "MARTIN LUTHER KING BL" → Martin Luther
-  King Jr Blvd), then move `SecondaryDistance` feet in `SecondaryDirection` along the primary road. Where two
-  intersections match (long streets that cross twice), use the reporting district or the crash's city beat to pick.
-  Report the share placed; crashes that don't place are counted in the city totals only. Rows with coordinates (CHP and
-  other agencies) are used as they are. Freeway crashes are left out.
-- **Checking the state's crash data** before trusting it: for Jan–Feb 2025, LAPD's own feed has 283 crashes with a
-  pedestrian (MO code 3003) and CCRS has 254 LAPD crashes with a pedestrian, about 90%. Match the two by date, time and
-  streets to see which ones are missing, and say so in the method.
+- **Placing crashes** (built 2026-09-29; CCRS rows without coordinates, 99.6% of LAPD's): the people walking hurt come
+  from `InjuredWitnessPassengers` (`InjuredPersonType` Pedestrian), their crashes from `Crashes`, both queried on
+  data.ca.gov (City Name Los Angeles), a year per file. A report sent twice keeps its last version. The crash goes
+  where `PrimaryRoad` and `SecondaryRoad` meet in the centerlines: with the suffixes as written, then any suffix, then
+  the second street spelled a little differently among those meeting the first (difflib, 0.85), then where the two
+  come within 60 m without sharing an intersection. Names are normalized ("MLK JR BL" → Martin Luther King, Jr Blvd,
+  "105 ST" → 105th St, "WEST BL" is West Blvd, not a direction). It then moves `SecondaryDistance` feet in
+  `SecondaryDirection` along the primary road, block by block, or straight that way where the road doesn't run that
+  way. A house number in either street field ("13520 PAXTON ST", "SUNLAND BL 10048") places it at the address along
+  the block instead. Where the streets meet in places more than 150 m apart, LAPD's reporting district picks (its
+  outlines from LA GeoHub), then the area in the report number, then the first when what's left is within 300 m.
+  For 2025-01-01 to 2026-09-28: 2,599 people placed (95.7% of those off the freeways); left out 100 on a freeway, 100
+  whose streets weren't found together, 17 whose streets meet in more than one place. Checked against LAPD's own
+  coordinates for Jan–Mar 2025 (177 crashes matched by date and minute): half within 12 m, 75% within 50 m, 92% within
+  200 m; the far ones traced were LAPD's point, not the placement. 57% of the people walking hit are on the High
+  Injury Network or at its corners, on 7.9% of the street length.
+- **Checking the state's crash data** (2026-09-29): for 2025-01-01 to 2025-03-08, LAPD's own feed has 312 crashes with
+  a pedestrian (MO code 3003) and CCRS 297 LAPD crashes with someone walking hurt, 95% (decision 5). The method says so.
 - **Police reports** (built 2026-09-29): `fetch_la.py` downloads only the page's NIBRS codes, a month at a time by
   `date_occ` (about 7,500 offenses a month; the whole window in 30 s). `analyze_la.py` keeps offenses from 2025-01-01
   (or two years back) to the last day with at least half a typical day's count, then leaves out, in this order:
@@ -241,7 +251,10 @@ hoods.json       docs/hoods.json (committed)  copied from ticket-clock/docs/stre
   publishes the City's own network, with one for people walking. 7,845 blocks are on it (a block is on it when most of
   it is within 20 m of an HIN line of the same street name; 99.2% of LADOT's lines are covered). Drawn under the dots
   (on to start), named in the card's last row, with a "?" to the note under the map and a method row.
-- [ ] **4. People walking hit** — CCRS fetch, placing by street names, the check against LAPD's feed, the card's row.
+- [x] **4. People walking hit** — CCRS fetch, placing by street names, the check against LAPD's feed, the card's row
+  (2026-09-29). 2,599 people walking hurt or killed in 2,464 crashes from 2025-01-01 to 2026-09-28, 95.7% of those off
+  the freeways placed; the card's row (count, HIN streets, rank, hour chart, after dark, top causes) and a map layer
+  (off to start). Severity isn't shown for a circle.
 - [ ] **5. Calls to police** — reporting districts, groups, the card's row and layer (decision 3: kept).
 - [ ] **6. Summary** — the city as a whole, places.
 - [ ] **7. Automation** — `weekly.yml`, `pages.yml`, GitHub Pages.
@@ -265,5 +278,8 @@ hoods.json       docs/hoods.json (committed)  copied from ticket-clock/docs/stre
 4. **Totals per year.** SF Streets shows totals per year since 2018. LA's old crime data (2020–2024) counts crimes
    differently from NIBRS (one crime per report, against every offense in an incident), and 2024 is split between the
    two. Options: a chart from 2025 only; or yearly totals with a marked break at 2024; or none.
-5. **Crash data completeness.** If CCRS turns out to miss a lot of LAPD's crashes, show crashes as "at least" or wait
-   for LAPD's new collision dataset (announced, not yet published).
+5. **Crash data completeness.** Checked 2026-09-29: for 2025-01-01 to 2025-03-08, LAPD's own feed has 312 crashes with a
+   pedestrian (MO 3003) and CCRS 297 LAPD crashes with someone walking hurt, 95%. So crashes are shown as counted, not
+   "at least". What CCRS does miss is recent months: LAPD's reports reach it late (half within 33 days, 85% within 90,
+   94% within 180), so the method and the card say the last few months are still coming in. Switch to LAPD's new
+   collision dataset if it's published.

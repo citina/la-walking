@@ -13,12 +13,14 @@ at its hundred block or intersection, so a report place is a point shared by eve
 marked daylight or after dark from the sun's times in LA on its date; LAPD writes 00:00 or 12:00 when it doesn't know
 the time, and those count with no time of day.
 
-The High Injury Network is LADOT's 2024 network for people walking: a block is on it when most of the block lies along
-one of its lines.
+People walking hit are the people walking hurt or killed in the state's crash reports (CCRS), off the freeways. LAPD's
+reports give two streets, not a point, so each crash is placed where they meet and moved along the first street by
+the distance the report gives (or at the house number, when there is one). The High Injury Network is LADOT's 2024
+network for people walking: a block is on it when most of the block lies along one of its lines.
 
 The map is split into cells of about 1 km, as on LA Street Rules and SF Streets, so the page only loads the few cells
 it's showing:
-  cells/{x}_{y}.json  one cell: {b: blocks, i: intersections, r: report places}. Positions are zoom-17 pixels from the
+  cells/{x}_{y}.json  one cell: {b: blocks, i: intersections, r: report places, x: crashes}. Positions are zoom-17 pixels from the
                       cell's corner.
                       block         {id: ASSETID, s: street name, h: hundred block (none without house numbers),
                                      a: the house numbers at the start and the end of its line (none without),
@@ -31,10 +33,13 @@ it's showing:
                                      turn (the zeros at the end left off), kt: when they happened, per kind, as
                                      [half hour, count, half hour, count, ...] with the half hours of the day 0-47 in
                                      daylight and 48-95 after dark; only with any}
+                      crash         [x, y, half hour (0-47 daylight, 48-95 after dark), people walking hurt, main cause
+                                     (its place in index.json's crashes.causes)]
   index.json          loads with the page: street names (blocks and intersections refer to them by number), which cells
                       exist, the cell size, the day it was built; the police reports' window, kinds and what was left
                       out; per neighborhood (hoods.json's order) its km of street and reports of violence and robbery,
-                      drug offenses and car break-ins; the High Injury Network's share of the streets; and for each size of the card's circle, the counts at each
+                      drug offenses and car break-ins; the crashes' window, count, causes and how many were placed;
+                      the High Injury Network's share of the streets and of the people walking hit; and for each size of the card's circle, the counts at each
                       percent of the intersections (circle_q), for the card's ranks
   streets.json        loads on the first search: for each street name, first every cell holding one of its blocks (to
                       outline the street), then its hundred blocks, one per place, as [hundred / 100 (-1 without house
@@ -45,6 +50,7 @@ it's showing:
 import bisect
 import collections
 import csv
+import difflib
 import json
 import math
 import re
@@ -277,9 +283,6 @@ for s in segs:
 print(f"High Injury Network: {hin_px * PX_M / 1609.344:,.0f} miles of lines; {sum(s['hin'] for s in segs):,} blocks on it, "
       f"{hin_on_px * PX_M / 1609.344:,.0f} miles ({hin_on_px / hin_px:.0%} of its length)")
 
-km_all = sum(math.hypot(ln[i][0] - ln[i - 1][0], ln[i][1] - ln[i - 1][1]) for sg in segs for ln in sg["lines"] for i in range(1, len(ln))) * PX_M / 1000
-km_hin = hin_on_px * PX_M / 1000
-
 # ---------- intersections: where each one is, and the streets that meet there ----------
 # A segment's line should run from its INT_ID_FROM to its INT_ID_TO; each intersection sits at the line end most of the
 # segments meeting there share, which also tells which way each line runs.
@@ -336,7 +339,7 @@ def cross(s, n):
 
 
 # ---------- blocks and intersections into the cells ----------
-cells = collections.defaultdict(lambda: dict(b=[], i=[], r=[]))
+cells = collections.defaultdict(lambda: dict(b=[], i=[], r=[], x=[]))
 cell_of = lambda x, y: (int(x // CELL), int(y // CELL))
 placed = collections.defaultdict(list)   # street name -> [hundred (-1 without house numbers), middle x, y, cell, place in the cell's list]
 hood_km = [0.0] * len(hoods)   # km of street per neighborhood, each block by its middle
@@ -439,14 +442,14 @@ for pk in ("home", "other"):
 
 # the report places into the cells, and what each neighborhood holds
 hood_rep = [[0, 0, 0] for _ in hoods]   # violence and robbery, drug offenses, car break-ins
-points = []   # [x, y, violence and robbery, drug offenses, car break-ins] at any time of day, for the ranks
+points = []   # [x, y, violence and robbery, drug offenses, car break-ins, people walking hit] at any time of day, for the ranks
 for (lat, lon), p in at.items():
     x, y = z17(lon, lat)
     cx, cy = cell_of(x, y)
     k = p["k"]
     tot = lambda ks: sum(k[3 * j] + k[3 * j + 1] + k[3 * j + 2] for j in ks)
     v = [tot(PEOPLE), tot(DRUGS), tot([CARS])]
-    points.append((x, y, *v))
+    points.append((x, y, *v, 0))
     h = hood_of(x, y)
     if h >= 0:
         hood_rep[h] = [a + b for a, b in zip(hood_rep[h], v)]
@@ -462,10 +465,357 @@ for (lat, lon), p in at.items():
 hood_stats = [[round(km, 1), *r] for km, r in zip(hood_km, hood_rep)]
 print(f"  {sum(sum(r) for r in hood_rep):,} of {sum(n_kind):,} reports inside a neighborhood outline")
 
+# ---------- people walking hit: the state's crash reports (CCRS) where someone walking was hurt or killed ----------
+# LAPD's reports have no coordinates, only two streets ("VERMONT AV" at "8TH ST", 50 ft W). A crash goes where the two
+# meet (the suffixes as written, then any suffix, then the second street spelled a little differently among those
+# meeting the first), then that far along the first street in that direction. Where the two meet in places more than
+# 150 m apart, the report's reporting district picks, or else its LAPD area. Freeway crashes are left out; rows with
+# coordinates (CHP and other agencies, off the freeways) are used as they are.
+CCRS_SFX = {"AV": "AVE", "AVENUE": "AVE", "BL": "BLVD", "BLV": "BLVD", "BLVSD": "BLVD", "BOULEVARD": "BLVD", "HY": "HWY", "STREET": "ST", "STR": "ST", "PLACE": "PL",
+            "DRIVE": "DR", "RD": "ROAD", "WY": "WAY", "LN": "LANE", "COURT": "CT", "TERRACE": "TER", "TERR": "TER",
+            "CIRCLE": "CIR", "HIGHWAY": "HWY", "TRL": "TR", "TRAIL": "TR", "PARKWAY": "PKWY", "PLZ": "PZ", "PLAZA": "PZ"}
+CCRS_DIRS = {"N", "S", "E", "W", "NORTH", "SOUTH", "EAST", "WEST"}
+CCRS_ALIAS = {"MLK": "MARTIN LUTHER KING JR", "MLK JR": "MARTIN LUTHER KING JR", "MARTIN LUTHER KING": "MARTIN LUTHER KING JR",
+              "M L KING": "MARTIN LUTHER KING JR", "MARTIN L KING": "MARTIN LUTHER KING JR", "MARTIN L KING JR": "MARTIN LUTHER KING JR"}
+COMPASS = {"N": (0, -1), "S": (0, 1), "E": (1, 0), "W": (-1, 0)}
+KSI = {"Fatal", "SuspectSerious", "SevereInactive"}   # killed or badly hurt ("suspected serious injury")
+# the crash report's primary collision factor (a Vehicle Code section), in plain words, as SF Streets words them
+CAUSE = {"21950A": "Driver didn't yield to someone in a crosswalk", "21950": "Driver didn't yield to someone in a crosswalk",
+         "21950B": "Person stepped into the car's path", "21950C": "Driver didn't slow down for someone in a crosswalk",
+         "21954A": "Person crossing outside a crosswalk didn't yield", "21954": "Person crossing outside a crosswalk didn't yield",
+         "21954B": "Driver didn't take care around someone walking in the road", "21955": "Crossing mid-block between signals",
+         "21456": "Person crossed against the walk signal", "21453A": "Driver ran a red light", "21453": "Driver ran a red light",
+         "21453B": "Driver turning right on a red light didn't stop or yield", "21453C": "Driver ran a red arrow",
+         "21453D": "Person crossed on a red light", "21451A": "Driver turning on a green light didn't yield",
+         "22350": "Driving too fast for conditions", "22106": "Driver started or backed up unsafely",
+         "22107": "Unsafe turn or lane change", "22450A": "Driver didn't stop at a stop sign", "22450": "Driver didn't stop at a stop sign",
+         "21801A": "Driver turning left didn't yield", "21800": "Driver didn't yield at a corner", "21802A": "Driver at a stop sign didn't yield",
+         "21804A": "Driver pulling out of a driveway or alley didn't yield", "21952": "Driver crossing the sidewalk didn't yield",
+         "21956A": "Person walking in the road where it isn't allowed", "21658A": "Driver straddled lanes or used the wrong lane",
+         "23152": "Driving under the influence", "23153": "Driving under the influence", "20001": "Hit and run: the driver didn't stop",
+         "21235G": "Motorized scooter ridden against the rules", "21650": "Driver didn't keep to the right",
+         "22100": "Driver turned from the wrong lane", "22101D": "Driver didn't follow the turn markings", "22102": "Illegal U-turn",
+         "21461A": "Driver didn't obey a sign or signal", "21461": "Driver didn't obey a sign or signal", "23103A": "Reckless driving",
+         "23103": "Reckless driving", "21966": "Person walking in a bike lane", "21703": "Following too closely",
+         "UNSAFE SPEED": "Driving too fast for conditions", "UNSAFE BACKING": "Driver started or backed up unsafely",
+         "UNSAFE STARTING": "Driver started or backed up unsafely", "UNSAFE TURNING MOVEMENT": "Unsafe turn or lane change"}
+CAUSE_BY_CODE = {"B": "Other improper driving", "C": "Something other than a driver or a person walking", "D": "Not recorded",
+                 "E": "Driver fell asleep"}
+
+
+def cause_of(r):
+    v = re.sub(r"\s*VC$|[\s()]", "", (r["Primary Collision Factor Violation"] or "").upper())
+    words = (r["Primary Collision Factor Violation"] or "").strip().upper()
+    for key in (v, re.sub(r"[A-Z]$", "", v), v[:5], words):
+        if key in CAUSE:
+            return CAUSE[key]
+    code = (r["Primary Collision Factor Code"] or "").strip()
+    return CAUSE_BY_CODE.get(code, "Another traffic law broken" if code == "A" else "Not recorded")
+
+
+norm = lambda s: re.sub(r"\s+", " ", re.sub(r"[.,'#]", " ", (s or "").upper())).strip()
+cl_sfx = {sg["key"][2] for sg in segs if sg["key"][2]}
+by_name, by_name_sfx, names_at = collections.defaultdict(set), collections.defaultdict(set), collections.defaultdict(set)
+for n, ks in touch.items():
+    if n not in node_at:
+        continue
+    for k in ks:
+        nm, sx = norm(segs[k]["base"][0]), segs[k]["base"][1]
+        by_name[nm].add(n)
+        by_name_sfx[(nm, sx)].add(n)
+        names_at[n].add(nm)
+
+
+ORDINAL = {"FIRST": "1ST", "SECOND": "2ND", "THIRD": "3RD", "FOURTH": "4TH", "FIFTH": "5TH", "SIXTH": "6TH", "SEVENTH": "7TH",
+           "EIGHTH": "8TH", "NINTH": "9TH", "TENTH": "10TH"}
+
+
+def ordinal(t):
+    """'105' -> '105TH', '3RS' -> '3RD', 'FIRST' -> '1ST': numbered streets as the centerlines spell them."""
+    if t in ORDINAL:
+        return ORDINAL[t]
+    m = re.fullmatch(r"(\d+)(ST|ND|RD|TH|RS|TS)?", t)
+    if not m:
+        return t
+    n = int(m.group(1))
+    return f"{n}{'TH' if 10 <= n % 100 <= 20 else {1: 'ST', 2: 'ND', 3: 'RD'}.get(n % 10, 'TH')}"
+
+
+def parse_road(s):
+    """'E 84TH PL' -> ('84TH', 'PL', None); 'LA BREA' -> ('LA BREA', None, None); '13520 PAXTON ST' -> ('PAXTON', 'ST',
+    13520); 'SUNLAND BL 10048' -> ('SUNLAND', 'BLVD', 10048); 'MLK JR BL' -> ('MARTIN LUTHER KING JR', 'BLVD', None)."""
+    toks = norm(re.sub(r"\(.*?\)", " ", s or "")).split()
+    if not toks or toks == ["NULL"]:
+        return None
+    num = None
+    if len(toks) > 2 and re.fullmatch(r"\d{2,6}", toks[0]):
+        num = int(toks.pop(0))
+    elif len(toks) > 2 and re.fullmatch(r"\d{2,6}", toks[-1]) and toks[0] not in ("AVENUE", "AVE", "AV"):
+        num = int(toks.pop())
+    if len(toks) > 1 and CCRS_SFX.get(toks[-1], toks[-1]) in cl_sfx:
+        sfx = CCRS_SFX.get(toks.pop(), None)
+        sfx = sfx or s.split()[-1].upper()
+    else:
+        sfx = None
+    sfx = CCRS_SFX.get(sfx, sfx)
+    if len(toks) > 1 and toks[0] in CCRS_DIRS:   # a direction, unless it's the name ("WEST BL" is West Blvd)
+        toks.pop(0)
+    if len(toks) > 1 and toks[-1] in CCRS_DIRS:
+        toks.pop()
+    if toks and toks[0] not in ("AVENUE", "AVE", "AV"):
+        toks[0] = ordinal(toks[0])
+    toks = ["CANYON" if t == "CYN" else t for t in toks]
+    name = re.sub(r"^AVE? (\d+)$", r"AVENUE \1", " ".join(toks))
+    return CCRS_ALIAS.get(name, name), sfx, num
+
+
+def alike(a, b):
+    return a == b or min(len(a), len(b)) >= 4 and (a.startswith(b) or b.startswith(a)) or \
+        difflib.SequenceMatcher(None, a, b).ratio() >= 0.85
+
+
+def meet(p, q):
+    """The intersections where streets p and q meet, and which way they were found."""
+    a, b = by_name_sfx.get(p[:2]) if p[1] else None, by_name_sfx.get(q[:2]) if q[1] else None
+    if a and b and a & b:
+        return a & b, "as written"
+    a, b = by_name.get(p[0], set()), by_name.get(q[0], set())
+    if a & b:
+        return a & b, "another suffix"
+    for nodes, other in ((a, q[0]), (b, p[0])):
+        found = {n for n in nodes if any(alike(other, nm) for nm in names_at[n] if nm != (p[0] if other == q[0] else q[0]))}
+        if found:
+            return found, "a different spelling"
+    # where the two streets come within 60 m without sharing an intersection (a corner the centerlines split in two)
+    grid = collections.defaultdict(list)
+    for n in b:
+        grid[(int(node_at[n][0] // 100), int(node_at[n][1] // 100))].append(n)
+    found = set()
+    for n in a:
+        x, y = node_at[n]
+        for i in range(int(x // 100) - 1, int(x // 100) + 2):
+            for j in range(int(y // 100) - 1, int(y // 100) + 2):
+                if any(math.hypot(node_at[m][0] - x, node_at[m][1] - y) <= 60 / PX_M for m in grid.get((i, j), ())):
+                    found.add(n)
+    return found, "the streets 60 m apart" if found else None
+
+
+seg_by_name = collections.defaultdict(list)
+for k, sg in enumerate(segs):
+    if sg["lo"]:
+        seg_by_name[norm(sg["base"][0])].append(k)
+
+
+def address(p):
+    """The place of house number p[2] on street p: along the block whose numbers take it in, from the house numbers at
+    the block's two ends. Every place it could be, as (point, block)."""
+    out = []
+    for k in seg_by_name.get(p[0], ()):
+        sg = segs[k]
+        if p[1] and sg["base"][1] != p[1] or not sg["lo"] <= p[2] <= sg["hi"] or not (sg["f"] and sg["t"]) or sg["f"] == sg["t"]:
+            continue
+        a, z = (sg["t"], sg["f"]) if sg["flip"] else (sg["f"], sg["t"])
+        frac = min(1.0, max(0.0, (p[2] - a) / (z - a)))
+        pts = [q for ln in sg["lines"] for q in ln]
+        total = sum(math.hypot(v[0] - u[0], v[1] - u[1]) for u, v in zip(pts, pts[1:]))
+        left = frac * total
+        for (ax, ay), (bx, by) in zip(pts, pts[1:]):
+            d = math.hypot(bx - ax, by - ay)
+            if d >= left:
+                out.append(((ax + (bx - ax) * left / (d or 1), ay + (by - ay) * left / (d or 1)), k))
+                break
+            left -= d
+    return out
+
+
+# LAPD's reporting districts: which one a point is in, and its LAPD area
+districts = []   # (district, area, box, rings)
+for f in json.loads((RAW / "districts.json").read_text())["features"]:
+    pr, g = f["properties"], f["geometry"]
+    if not pr["REPDIST"] or not g:
+        continue
+    polys = g["coordinates"] if g["type"] == "MultiPolygon" else [g["coordinates"]]
+    rings = [[z17(c[0], c[1]) for c in ring] for poly in polys for ring in poly]
+    xs, ys = [p[0] for r in rings for p in r], [p[1] for r in rings for p in r]
+    districts.append((int(pr["REPDIST"]), int(pr["PREC"]), (min(xs), min(ys), max(xs), max(ys)), rings))
+
+
+def district_at(x, y):
+    for d, area, (x0, y0, x1, y1), rings in districts:
+        if x0 <= x <= x1 and y0 <= y <= y1:
+            inside = False
+            for r in rings:
+                for (ax, ay), (bx, by) in zip(r, r[-1:] + r[:-1]):
+                    if (ay > y) != (by > y) and x < (bx - ax) * (y - ay) / (by - ay) + ax:
+                        inside = not inside
+            if inside:
+                return d, area
+    return None, None
+
+
+def pick(cands, rd, area, at=lambda n: node_at[n]):
+    """One place among those found: those within 150 m of each other are one place (a divided street meets the other
+    street twice); more than one place goes to the report's district, then its area, then, when what's left is within
+    300 m (a street that jogs where it crosses), to the first."""
+    places = []
+    for n in cands:
+        for pl in places:
+            if math.hypot(at(n)[0] - at(pl[0])[0], at(n)[1] - at(pl[0])[1]) < 150 / PX_M:
+                pl.append(n)
+                break
+        else:
+            places.append([n])
+    if len(places) > 1 and rd:
+        places = [pl for pl in places if district_at(*at(pl[0]))[0] == rd] or places
+    if len(places) > 1 and area:
+        places = [pl for pl in places if district_at(*at(pl[0]))[1] == area] or places
+    if len(places) > 1 and max(math.hypot(at(a[0])[0] - at(b[0])[0], at(a[0])[1] - at(b[0])[1]) for a in places for b in places) < 300 / PX_M:
+        places = places[:1]
+    return places[0] if len(places) == 1 else None
+
+
+def line_from(sg, n):
+    """A segment's points, starting at its end at intersection n."""
+    pts = [p for ln in sg["lines"] for p in ln]
+    x, y = node_at[n]
+    return pts if math.hypot(pts[0][0] - x, pts[0][1] - y) <= math.hypot(pts[-1][0] - x, pts[-1][1] - y) else pts[::-1]
+
+
+def walk(nodes, name, d, way):
+    """From the intersection, d px along street name in compass direction way: the point and the block it's on. None when
+    the street doesn't run that way from there."""
+    ux, uy = COMPASS[way]
+    n, prev, left = nodes[0], None, d
+    for _ in range(60):
+        best = None
+        for k in touch[n]:
+            sg = segs[k]
+            if k == prev or not alike(norm(sg["base"][0]), name):
+                continue
+            pts = line_from(sg, n)
+            vx, vy = pts[-1][0] - pts[0][0], pts[-1][1] - pts[0][1]
+            ln = math.hypot(vx, vy)
+            if ln and (vx * ux + vy * uy) / ln > 0.3 and (best is None or (vx * ux + vy * uy) / ln > best[0]):
+                best = ((vx * ux + vy * uy) / ln, k, pts)
+        if best is None:
+            return None if prev is None else (pts_end, prev)
+        _, k, pts = best
+        for (ax, ay), (bx, by) in zip(pts, pts[1:]):
+            sd = math.hypot(bx - ax, by - ay)
+            if sd >= left:
+                t = left / sd
+                return (ax + t * (bx - ax), ay + t * (by - ay)), k
+            left -= sd
+        pts_end, prev = pts[-1], k
+        other = [e for e in segs[k]["ends"] if e and e != n]
+        if not other or other[0] not in node_at:
+            return pts_end, k
+        n = other[0]
+    return pts_end, prev
+
+
+people_in = collections.defaultdict(list)   # collision -> how badly each person walking was hurt
+crash_rows = []
+for f in sorted((RAW / "crashes").glob("*.json")):
+    d = json.loads(f.read_text())
+    crash_rows += d["crashes"]
+    for pr in d["people"]:
+        people_in[int(pr["CollisionId"])].append(pr["ExtentOfInjuryCode"])
+latest = {}   # a report sent more than once: its last version
+for r in crash_rows:
+    key = r["Report Number"] or r["Collision Id"]
+    if key not in latest or float(r["Report Version"] or 0) > float(latest[key]["Report Version"] or 0):
+        latest[key] = r
+c_end = max(date.fromisoformat(r["Crash Date Time"][:10]) for r in latest.values())
+c_start = max(POLICE_FROM, c_end - timedelta(days=729))
+c_left, how = collections.Counter(), collections.Counter()
+causes, cause_ix = [], {}
+crashes = []   # (x, y, time, people, badly hurt or killed, cause, the block or intersection it's at)
+for r in latest.values():
+    t = datetime.fromisoformat(r["Crash Date Time"])
+    hurt = people_in.get(int(float(r["Collision Id"])), [])
+    if not c_start <= t.date() <= c_end or not hurt:
+        continue
+    if r["IsFreeway"] == "True":
+        c_left["on a freeway"] += len(hurt)
+        continue
+    at = None
+    if r["Latitude"] and r["Longitude"]:
+        x, y = z17(float(r["Longitude"]), float(r["Latitude"]))
+        how["coordinates"] += 1
+    else:
+        p, q = parse_road(r["PrimaryRoad"]), parse_road(r["SecondaryRoad"])
+        if p and "/" in (r["PrimaryRoad"] or "") and (not q or q[0] == parse_road(r["PrimaryRoad"].split("/")[0])[0]):
+            p, q = parse_road(r["PrimaryRoad"].split("/")[0]), parse_road(r["PrimaryRoad"].split("/")[1])   # "SHERMAN WAY/HINDS AVE"
+        rd = int(r["ReportingDistrict"]) if (r["ReportingDistrict"] or "").isdigit() else None
+        rn = r["Report Number"] or ""   # LAPD's 2503-04052, 250304052 or 25-03-04052: the year, then the area
+        area = int(re.sub(r"\D", "", rn)[2:4]) if re.fullmatch(r"\d{2}-?\d{2}-?\d{5}", rn) else rd // 100 if rd else None
+        area = area if area and 1 <= area <= 21 else None
+        # a house number on either street: the address, when the block is found
+        spot = None
+        for a in (p, q):
+            if a and a[2] and (a is p or not p or alike(q[0], p[0])):
+                found = address(a)
+                chosen = pick(range(len(found)), rd, area, at=lambda i: found[i][0]) if found else None
+                if chosen is not None:
+                    spot = found[chosen[0]]
+                    break
+        if spot:
+            (x, y), k = spot
+            at = ("b", k)
+            how["at the address"] += 1
+        else:
+            cands, found = meet(p, q) if p and q and p[0] != q[0] else (set(), None)
+            place = pick(sorted(cands, key=str), rd, area)
+            if not place:
+                c_left["no place: the streets weren't found together" if not cands else "no place: the streets meet in more than one place"] += len(hurt)
+                continue
+            x, y = node_at[place[0]]
+            at = ("i", place[0])
+            dist = float(r["SecondaryDistance"] or 0) * (5280 if r["SecondaryUnitOfMeasure"] == "M" else 1) * 0.3048 / PX_M
+            way = (r["SecondaryDirection"] or "").strip().upper()
+            if dist and way in COMPASS:
+                moved = walk(place, p[0], dist, way)
+                if moved:
+                    (x, y), k = moved
+                    at = ("b", k)
+                    how[f"at the streets' corner ({found}), then along the street"] += 1
+                else:
+                    how[f"at the streets' corner ({found}), then straight that way"] += 1
+                    x, y = x + COMPASS[way][0] * dist, y + COMPASS[way][1] * dist
+                    at = None
+            else:
+                how[f"at the streets' corner ({found})"] += 1
+    cause = cause_of(r)
+    if cause not in cause_ix:
+        cause_ix[cause] = len(causes)
+        causes.append(cause)
+    crashes.append((x, y, t, len(hurt), sum(e in KSI for e in hurt), cause_ix[cause], at))
+n_hit = sum(c[3] for c in crashes)
+n_ksi = sum(c[4] for c in crashes)
+n_left = sum(c_left.values())
+print(f"people walking hit {c_start} to {c_end}: {n_hit:,} placed in {len(crashes):,} crashes ({n_ksi:,} badly hurt or killed),"
+      f" {n_hit / (n_hit + n_left - c_left['on a freeway']):.1%} of those off the freeways")
+print("  placed: " + ", ".join(f"{n:,} {w}" for w, n in how.most_common()))
+print("  left out: " + ", ".join(f"{n:,} {w}" for w, n in c_left.most_common()))
+print("  causes: " + ", ".join(f"{causes[k]} {n:,}" for k, n in collections.Counter(c[5] for c in crashes).most_common(8)))
+
+# on the High Injury Network: placed on one of its blocks, or at an intersection where one of them ends
+hin_nodes = {e for sg in segs if sg["hin"] for e in sg["ends"] if e}
+on_hin = lambda at: at is not None and (segs[at[1]]["hin"] if at[0] == "b" else at[1] in hin_nodes)
+hit_on_hin = sum(c[3] for c in crashes if on_hin(c[6]))
+km_all = sum(math.hypot(ln[i][0] - ln[i - 1][0], ln[i][1] - ln[i - 1][1]) for sg in segs for ln in sg["lines"] for i in range(1, len(ln))) * PX_M / 1000
+km_hin = hin_on_px * PX_M / 1000
+print(f"  on the High Injury Network: {hit_on_hin:,} of {n_hit:,} people walking hit ({hit_on_hin / n_hit:.0%}), on {km_hin / km_all:.1%} of the street length")
+for x, y, t, n, _, cause, _ in crashes:
+    cx, cy = cell_of(x, y)
+    cells[(cx, cy)]["x"].append([round(x - cx * CELL), round(y - cy * CELL), half_hour(t) if t else -1, n, cause])
+
 # ---------- ranks: the card's circle against the same circle around every intersection ----------
 # For each intersection, the report places within the biggest circle, nearest first, with running totals; each smaller
 # circle is then a cut of that list. circle_q[m][key] is the count at each percent of the intersections: at least p% of
 # them have fewer than v when q[p - 1] < v, for p from 1 to 99 (the page rounds down, as SF Streets does).
+points += [(x, y, 0, 0, 0, n) for x, y, _, n, *_ in crashes]
 R = max(RADII) / PX_M
 grid = collections.defaultdict(list)
 for pt in points:
@@ -475,7 +825,7 @@ for n in corners:
     x, y = node_at[n]
     found = sorted(((px - x) ** 2 + (py - y) ** 2, v) for i in range(int(x // R) - 1, int(x // R) + 2) for j in range(int(y // R) - 1, int(y // R) + 2)
                    for px, py, *v in grid.get((i, j), ()) if (px - x) ** 2 + (py - y) ** 2 <= R * R)
-    run, tot = [], [0, 0, 0]
+    run, tot = [], [0, 0, 0, 0]
     for _, v in found:
         tot = [a + b for a, b in zip(tot, v)]
         run.append(tot)
@@ -486,22 +836,24 @@ for m in RADII:
     circ = []
     for d2, run in near:
         i = bisect.bisect_right(d2, r2)
-        circ.append(run[i - 1] if i else [0, 0, 0])
+        circ.append(run[i - 1] if i else [0, 0, 0, 0])
     q = {}
-    for key, j in (("people", 0), ("drugs", 1), ("cars", 2)):
+    for key, j in (("people", 0), ("drugs", 1), ("cars", 2), ("hit", 3)):
         v = sorted(c[j] for c in circ)
         q[key] = [v[math.ceil(len(v) * p / 100) - 1] for p in range(1, 100)]
     circle_q[m] = q
 print(f"  ranks: at 200 m, half the intersections have {circle_q[200]['people'][49]:,} or fewer reports of violence and robbery,",
-      f"the top 1% at least {circle_q[200]['people'][98]:,}")
+      f"the top 1% at least {circle_q[200]['people'][98]:,}; people walking hit: half have {circle_q[200]['hit'][49]:,} or fewer,",
+      f"the top 1% at least {circle_q[200]['hit'][98]:,}")
 
 # ---------- write the cells, the index and the search list ----------
 shutil.rmtree(OUT, ignore_errors=True)
 (OUT / "cells").mkdir(parents=True)
 sizes = []
 for (cx, cy), c in cells.items():
-    if not c["r"]:
-        del c["r"]
+    for k in ("r", "x"):
+        if not c[k]:
+            del c[k]
     body = json.dumps(c, separators=(",", ":"))
     (OUT / "cells" / f"{cx}_{cy}.json").write_text(body)
     sizes.append(len(body))
@@ -536,7 +888,9 @@ meta = dict(built=str(datetime.now(LA_TZ).date()), cell=CELL, cells=cell_keys, n
             blocks=sum(len(c["b"]) for c in cells.values()), intersections=len(corners),
             police=dict(start=str(p_start), end=str(p_end), n=n_police, kinds=[k for k, _ in KINDS], per_kind=n_kind,
                         people=PEOPLE, drugs=DRUGS, cars=CARS, no_time=no_time, left=dict(left)),
-            hin=dict(km=round(km_hin), share_km=round(km_hin / km_all, 3)),
+            crashes=dict(start=str(c_start), end=str(c_end), n=n_hit, crashes=len(crashes), ksi=n_ksi, causes=causes,
+                         left=dict(c_left), placed=round(n_hit / (n_hit + n_left - c_left["on a freeway"]), 3)),
+            hin=dict(km=round(km_hin), share_km=round(km_hin / km_all, 3), hit=hit_on_hin, share_hit=round(hit_on_hin / n_hit, 3)),
             hood_stats=hood_stats, circle_q=circle_q)
 (OUT / "index.json").write_text(json.dumps(meta, separators=(",", ":")))
 (OUT / "streets.json").write_text(json.dumps(streets, separators=(",", ":")))

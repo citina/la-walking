@@ -11,8 +11,8 @@ and built the same way as [LA Street Rules](https://citina.github.io/ticket-cloc
 map cells, rebuilt weekly. All from public data: LAPD on [data.lacity.org](https://data.lacity.org), California's crash
 reports on [data.ca.gov](https://data.ca.gov), and LADOT's High Injury Network.
 
-**Status:** milestone 3 of 8, not published yet. The map, search, the card's circle, LAPD's reports in public places
-and the High Injury Network work; people walking hit, calls to police and the city summary are still to come. See [PLAN.md](PLAN.md) for how it will work and what's still
+**Status:** milestone 4 of 8, not published yet. The map, search, the card's circle, LAPD's reports in public places,
+the High Injury Network and people walking hit work; calls to police and the city summary are still to come. See [PLAN.md](PLAN.md) for how it will work and what's still
 open, and [DATA_SOURCES.md](DATA_SOURCES.md) for which dataset is used for what and which were left out.
 
 Working title; the name is still open (PLAN.md §6).

@@ -6,13 +6,19 @@
   (ticket-clock/fetch_city.py). They barely change, so they're refetched once the copy is four weeks old.
 - hin.json: the City's High Injury Network for people walking (LADOT's 2024 Vision Zero Safety Study, on LA GeoHub),
   about 400 lines. It changes only when LADOT redoes the study, so it's refetched once the copy is four weeks old.
+- districts.json: LAPD's reporting districts (LA GeoHub), about 1,200 outlines, to tell apart two places where the same
+  two streets meet when placing a crash, and for the calls to police. Refetched once the copy is four weeks old.
 - police/YYYY-MM.csv: LAPD's NIBRS offenses (data.lacity.org k7nn-b2ep) of the kinds the page shows (POLICE_CODES),
   by the month they happened in, from POLICE_FROM (when LAPD's new records are complete) or two years back, whichever
   is later. Late reports keep filling in recent months, so the last two are refetched every run, and an older one once
   its copy is four weeks old. Months that fall out of the window are deleted.
+- crashes/YYYY.json: the state's crash reports (CCRS, data.ca.gov) in the City of Los Angeles where someone walking
+  was hurt or killed, a year at a time, from the police window's first year: the crashes, and the people walking hurt
+  in them (how badly, nothing else about them). LAPD's reports reach the state weeks or months late, so this year's and
+  last year's are refetched every run, older ones once their copy is four weeks old.
 - fetched.json: the date each file above was downloaded.
 
-Calls to police and crash reports come with the milestones that use them (PLAN.md §5).
+Calls to police come with the milestones that use them (PLAN.md §5).
 
 When a download fails and an older copy is on disk, that copy is kept with a warning, so a city server that's down for
 a day doesn't stop the rebuild; a file with no copy yet still stops it.
@@ -30,6 +36,8 @@ RAW = Path(__file__).resolve().parent / "data" / "raw"
 STREETS = "https://maps.lacity.org/lahub/rest/services/Street_Information/MapServer/36/query"
 FIELDS = "ASSETID,INT_ID_FROM,INT_ID_TO,ADLF,ADLT,ADRF,ADRT,ZIP_L,ZIP_R,TDIR,STNAME,STSFX,SFXDIR,STATUS,Street_Designation"
 STREETS_DAYS = 28   # the centerlines and the High Injury Network are refetched once the copy is this old
+DISTRICTS = ("https://services5.arcgis.com/7nsPwEMP38bSkCjy/arcgis/rest/services/LAPD_Reporting_District/"
+             "FeatureServer/0/query")
 HIN = ("https://services1.arcgis.com/tp9wqSVX1AitKgjd/arcgis/rest/services/"
        "LA_Vision_Zero_High_Injury_Network_(2024)_Prioritization_Data_view/FeatureServer/4/query")   # 4: people walking
 POLICE = "https://data.lacity.org/resource/k7nn-b2ep.csv"
@@ -44,7 +52,11 @@ KINDS = [("Robbery", ["120"]),
          ("Drug offenses", ["35A", "35B"]),
          ("Car break-ins", ["23F"])]
 POLICE_CODES = [c for _, cs in KINDS for c in cs]
-
+CCRS = "https://data.ca.gov/api/3/action/"   # CKAN: package_show finds each year's tables, datastore_search_sql queries them
+CRASH_COLS = ["Collision Id", "Report Number", "Report Version", "NCIC Code", "Crash Date Time", "IsFreeway", "Latitude",
+              "Longitude", "PrimaryRoad", "SecondaryRoad", "SecondaryDistance", "SecondaryDirection",
+              "SecondaryUnitOfMeasure", "ReportingDistrict", "PedestrianActionDesc", "Primary Collision Factor Code",
+              "Primary Collision Factor Violation", "HitRun"]
 
 
 def get(url, params, timeout=600, tries=4):
@@ -144,6 +156,19 @@ def main():
     else:
         print(f"hin.json: keeping the copy from {fetched['hin.json']}")
 
+    # ---- LAPD's reporting districts, in one request ----
+    def fetch_districts(path):
+        page = get_json(DISTRICTS, {"where": "1=1", "outFields": "REPDIST,PREC,APREC", "outSR": "4326", "f": "geojson"}, timeout=120)
+        if not page.get("features") or page.get("properties", {}).get("exceededTransferLimit"):
+            raise ValueError(f"expected every district in one answer, got {len(page.get('features', []))}")
+        write(path, json.dumps(page, separators=(",", ":")).encode())
+        return f"districts.json {len(page['features'])} reporting districts"
+
+    if age("districts.json") >= STREETS_DAYS or not (RAW / "districts.json").exists():
+        refresh("districts.json", fetch_districts)
+    else:
+        print(f"districts.json: keeping the copy from {fetched['districts.json']}")
+
     # ---- police reports, a month at a time ----
     pdir = RAW / "police"
     pdir.mkdir(exist_ok=True)
@@ -169,6 +194,42 @@ def main():
         if (RAW / name).exists() and i < len(window) - 2 and age(name) < POLICE_DAYS:
             continue
         refresh(name, month_fetcher(m, nxt))
+
+    # ---- people walking hurt or killed in crashes, a year at a time ----
+    tables = {r["name"]: r["id"] for r in get_json(CCRS + "package_show", {"id": "ccrs"}, timeout=120)["result"]["resources"]}
+    cdir = RAW / "crashes"
+    cdir.mkdir(exist_ok=True)
+    for old in cdir.glob("*.json"):
+        if int(old.stem) < start.year:
+            old.unlink()
+            fetched.pop(f"crashes/{old.name}", None)
+
+    def sql(q):
+        return get_json(CCRS + "datastore_search_sql", {"sql": q}, timeout=300)["result"]["records"]
+
+    def year_fetcher(y):
+        def fetch(path):
+            c, i = tables[f"Crashes_{y}"], tables[f"InjuredWitnessPassengers_{y}"]
+            walking = f'SELECT "CollisionId"::numeric FROM "{i}" WHERE "InjuredPersonType" = \'Pedestrian\''
+            crashes = sql(f'SELECT {", ".join(chr(34) + k + chr(34) for k in CRASH_COLS)} FROM "{c}" '
+                          f'WHERE "City Name" = \'Los Angeles\' AND "Collision Id" IN ({walking})')
+            people = sql(f'SELECT i."CollisionId", i."InjuredWitPassId", i."ExtentOfInjuryCode" FROM "{i}" i JOIN "{c}" c '
+                         f'ON c."Collision Id" = i."CollisionId"::numeric WHERE c."City Name" = \'Los Angeles\' '
+                         f'AND i."InjuredPersonType" = \'Pedestrian\'')
+            if len(crashes) >= 50000 or len(people) >= 50000:   # the API's cap on one answer
+                raise ValueError(f"{len(crashes)} crashes, {len(people)} people: more than one answer holds")
+            write(path, json.dumps(dict(crashes=crashes, people=people), separators=(",", ":")).encode())
+            return f"crashes/{path.name} {len(crashes)} crashes, {len(people)} people walking hurt or killed"
+        return fetch
+
+    for y in range(start.year, today.year + 1):
+        name = f"crashes/{y}.json"
+        if f"Crashes_{y}" not in tables:
+            print(f"warning: no Crashes_{y} table on data.ca.gov yet")
+            continue
+        if (RAW / name).exists() and y < today.year - 1 and age(name) < POLICE_DAYS:
+            continue
+        refresh(name, year_fetcher(y))
 
     manifest.write_text(json.dumps(fetched, indent=1, sort_keys=True))
     if missing:
