@@ -1,0 +1,128 @@
+name: weekly update
+
+# LAPD's reports and calls (data.lacity.org) and the state's crash reports (data.ca.gov) keep filling in; the page's
+# data is rebuilt once a week. GitHub's cron is best-effort, which is fine here: a late run only publishes a few hours
+# later.
+#
+# The page's data (docs/data/, ~20 MB) isn't committed: it's published as the la-data release, so the repo doesn't grow
+# every week, and pages.yml puts it into docs/data/. The raw downloads are kept between runs in the la-downloads
+# release, so fetch_la.py only refreshes what's due and keeps an older copy when a server is down.
+on:
+  schedule:
+    - cron: "37 14 * * 1"   # Mondays 14:37 UTC (7:37 am PDT, 6:37 am PST)
+  workflow_dispatch:
+
+concurrency:
+  group: weekly
+  cancel-in-progress: false
+
+permissions:
+  contents: write           # publish the releases
+  actions: write            # start the Pages deploy
+
+jobs:
+  data:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: bash         # -eo pipefail, so a failing script isn't hidden by tee
+    steps:
+      - uses: actions/checkout@v4
+
+      # The version the scripts were written and checked with; they need nothing beyond the standard library
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.9"
+
+      # Last week's downloads (data/raw/, ~130 MB). They live in a release, not the Actions cache, because GitHub
+      # drops caches unused for 7 days and this runs every 7 days.
+      - name: Get last week's downloads
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release download la-downloads --pattern la-downloads.tar.gz --dir "$RUNNER_TEMP"; then
+            mkdir -p data && tar -xzf "$RUNNER_TEMP/la-downloads.tar.gz" -C data
+            echo "restored $(ls data/raw/police | wc -l) months of reports and $(ls data/raw/calls | wc -l) of calls"
+          else
+            echo "no la-downloads release yet: downloading everything"
+          fi
+
+      - name: Fetch the reports, calls, crashes, streets, districts and the High Injury Network
+        id: fetch
+        run: python3 -u fetch_la.py | tee fetch.log
+
+      # Kept even when a download failed (a server down and no older copy): the next run then only needs the file that's
+      # missing. Analyze and publish still wait for a full set.
+      - name: Keep the downloads for next week
+        if: ${{ !cancelled() && steps.fetch.outcome != 'skipped' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          sed -n 's/^warning: /::warning::/p; s/^error: /::error::/p' fetch.log
+          tar -czf "$RUNNER_TEMP/la-downloads.tar.gz" -C data raw
+          if gh release view la-downloads >/dev/null 2>&1; then
+            gh release upload la-downloads "$RUNNER_TEMP/la-downloads.tar.gz" --clobber
+          else
+            gh release create la-downloads "$RUNNER_TEMP/la-downloads.tar.gz" --latest=false \
+              --title "LA Walking downloads" \
+              --notes "The raw downloads behind LA Walking (data/raw/), kept between weekly runs so each run only refreshes what's due. Not the page's data; that's the la-data release."
+          fi
+
+      - name: Analyze
+        run: python3 -u analyze_la.py | tee analyze.log
+
+      # The windows roll, so the counts move a little every week; a big drop means a broken download.
+      - name: Check the counts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          old=$(gh release view la-data --json body --jq .body 2>/dev/null || true)
+          python3 - "$old" <<'PY'
+          import json, sys
+          m = json.load(open("docs/data/index.json"))
+          new = {"reports": m["police"]["n"], "people walking hit": m["crashes"]["n"], "calls": m["calls"]["n"]}
+          old = dict(line.split(": ", 1) for line in sys.argv[1].splitlines() if ": " in line)
+          bad = False
+          for k, v in new.items():
+              was = int(old[k]) if old.get(k, "").isdigit() else None
+              print(f"{k}: {was if was is not None else 'none yet'} -> {v}")
+              if was and v < was * 0.9:
+                  print(f"::error::{k} fell from {was} to {v}; not publishing")
+                  bad = True
+          sys.exit(bad)
+          PY
+
+      - name: Publish as the la-data release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tar -czf la-data.tar.gz -C docs data
+          notes=$(python3 <<'PY'
+          import json
+          m = json.load(open("docs/data/index.json"))
+          p, c, q = m["police"], m["crashes"], m["calls"]
+          print(f"Data for LA Walking (docs/data/), rebuilt every week by weekly.yml: police reports through {p['end']}, "
+                f"calls through {q['end']}, crashes through {c['end']}.")
+          print()
+          print(f"reports: {p['n']}")
+          print(f"people walking hit: {c['n']}")
+          print(f"calls: {q['n']}")
+          PY
+          )
+          if gh release view la-data >/dev/null 2>&1; then
+            gh release upload la-data la-data.tar.gz --clobber
+            gh release edit la-data --notes "$notes"
+          else
+            gh release create la-data la-data.tar.gz --title "LA Walking data" --notes "$notes" --latest=false
+          fi
+
+  # Publishing a release doesn't trigger pages.yml, so start it here.
+  deploy:
+    needs: data
+    runs-on: ubuntu-latest
+    steps:
+      - name: Start the Pages deploy
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run pages.yml --repo "${{ github.repository }}" --ref "${{ github.ref_name }}"

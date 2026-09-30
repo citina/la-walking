@@ -230,9 +230,11 @@ hoods.json       docs/hoods.json (committed)  copied from ticket-clock/docs/stre
 - **Daylight / after dark**: from the sun's times in LA on each date, as in SF.
 - **Unknown times**: LAPD writes 00:00 or 12:00 when the time isn't known (10,033 and 9,083 reports since 2025, far
   above their neighbors). Those count in totals but not in hour charts or daylight / dark.
-- **Weekly** (`weekly.yml`, Mondays): fetch, analyze, check the counts against last week's (a drop of more than 10% stops
-  it), publish `docs/data/` as the `la-data` release, deploy Pages. Months already downloaded are kept in the Actions
-  cache; a month is downloaded again when it's one of the last two or its copy is over four weeks old.
+- **Weekly** (`weekly.yml`, Mondays, written 2026-09-30): restore last week's downloads from the `la-downloads`
+  release (data/raw/, 31 MB packed; a release, not the Actions cache, which drops what's unused for 7 days), fetch,
+  keep the downloads, analyze, check the counts against the `la-data` release's notes (a drop of more than 10% in
+  reports, people walking hit or calls stops it), publish docs/data/ as the `la-data` release (6 MB packed), then start
+  `pages.yml`, which puts the release into docs/data/ and deploys Pages. Nothing in docs/data/ is committed.
 - **Dates** (Citina, 2026-09-30): a menu over the map picks the dates the map and the card count: since January 2025,
   the last 12 months, 90 days or 30 days, or the last full calendar month. Every report, crash and call keeps its day
   (reports as one number with their half hour and kind, calls in a file per district), and each dataset counts back
@@ -281,7 +283,9 @@ hoods.json       docs/hoods.json (committed)  copied from ticket-clock/docs/stre
   per km of street; the intersections where the most were hit; what the people hit were doing and the main causes; a
   note on why the page starts in 2025. The City totals count every crash off the freeways, placed or not (2,716
   people, 215 killed, 1,003 badly hurt).
-- [ ] **7. Automation** — `weekly.yml`, `pages.yml`, GitHub Pages.
+- [ ] **7. Automation** — `weekly.yml`, `pages.yml`, GitHub Pages. Written and checked locally 2026-09-30 (the count
+  check and the release notes run against this week's build); not run on GitHub yet: it needs the push and Pages
+  turned on (Settings → Pages → Source: GitHub Actions).
 - [x] **Dates menu** — the date range for the map and the card (Citina, 2026-09-30); see §4.
 - [ ] **8. Sister sites** — add it to the masthead and About cards of the other four pages.
 

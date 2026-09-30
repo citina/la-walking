@@ -28,7 +28,10 @@ python3 analyze_la.py    # data/raw/ -> docs/data/ (about 35 seconds)
 python3 -m http.server 8766 --directory docs
 ```
 
-then open http://localhost:8766/. Python 3.9 or later, no packages beyond the standard library so far.
+then open http://localhost:8766/. Python 3.9 or later, no packages beyond the standard library.
+
+On GitHub, `.github/workflows/weekly.yml` does the same every Monday and publishes docs/data/ as the `la-data` release
+(it isn't committed); `pages.yml` puts that release into docs/data/ and deploys the page.
 
 ## Who made this
 
