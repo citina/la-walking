@@ -10,7 +10,7 @@ Only the walking question. The driving question ("can I park here?") was looked 
 LA doesn't publish its curb rules (meter hours, time limits, permit hours, tow-away, closures), so the answer would rest
 on guesses. LA Street Rules keeps the parking side, from tickets.
 
-Written 2026-09-27. Milestone 1 (the map, search and the card's shell) built 2026-09-29; see §5.
+Written 2026-09-27. Milestones 1–3 (the map, police reports, the High Injury Network) built 2026-09-29; see §5.
 
 ---
 
@@ -236,7 +236,11 @@ hoods.json       docs/hoods.json (committed)  copied from ticket-clock/docs/stre
   daylight, after dark); three layers (violence and robbery on, drug offenses and car break-ins off); neighborhoods
   shaded by violence and robbery per km of street; the method's police, after dark and limits rows; after a search on
   a phone, the short answer above the map.
-- [ ] **3. High Injury Network** — the layer and the card's line.
+- [x] **3. High Injury Network** — the layer and the card's line (2026-09-29). LADOT's 2024 network for people walking
+  (551 miles), not the county's: the county hub publishes each city's ranked road windows with no cut-off, while LADOT
+  publishes the City's own network, with one for people walking. 7,845 blocks are on it (a block is on it when most of
+  it is within 20 m of an HIN line of the same street name; 99.2% of LADOT's lines are covered). Drawn under the dots
+  (on to start), named in the card's last row, with a "?" to the note under the map and a method row.
 - [ ] **4. People walking hit** — CCRS fetch, placing by street names, the check against LAPD's feed, the card's row.
 - [ ] **5. Calls to police** — reporting districts, groups, the card's row and layer (decision 3: kept).
 - [ ] **6. Summary** — the city as a whole, places.

@@ -13,6 +13,9 @@ at its hundred block or intersection, so a report place is a point shared by eve
 marked daylight or after dark from the sun's times in LA on its date; LAPD writes 00:00 or 12:00 when it doesn't know
 the time, and those count with no time of day.
 
+The High Injury Network is LADOT's 2024 network for people walking: a block is on it when most of the block lies along
+one of its lines.
+
 The map is split into cells of about 1 km, as on LA Street Rules and SF Streets, so the page only loads the few cells
 it's showing:
   cells/{x}_{y}.json  one cell: {b: blocks, i: intersections, r: report places}. Positions are zoom-17 pixels from the
@@ -20,7 +23,8 @@ it's showing:
                       block         {id: ASSETID, s: street name, h: hundred block (none without house numbers),
                                      a: the house numbers at the start and the end of its line (none without),
                                      g: lines, x: the cross streets at its two ends, sd: 1 or 2 when it carries only
-                                     the odd or the even house numbers (half of a divided street)}
+                                     the odd or the even house numbers (half of a divided street), hin: 1 on the
+                                     High Injury Network}
                       intersection  [x, y, street name, street name, ...]: the streets that meet there, busiest first,
                                      each once (N and S Vermont Ave are one street)
                       report place  {p: [x, y], k: reports per kind, in daylight, after dark and at no known time in
@@ -30,7 +34,7 @@ it's showing:
   index.json          loads with the page: street names (blocks and intersections refer to them by number), which cells
                       exist, the cell size, the day it was built; the police reports' window, kinds and what was left
                       out; per neighborhood (hoods.json's order) its km of street and reports of violence and robbery,
-                      drug offenses and car break-ins; and for each size of the card's circle, the counts at each
+                      drug offenses and car break-ins; the High Injury Network's share of the streets; and for each size of the card's circle, the counts at each
                       percent of the intersections (circle_q), for the card's ranks
   streets.json        loads on the first search: for each street name, first every cell holding one of its blocks (to
                       outline the street), then its hundred blocks, one per place, as [hundred / 100 (-1 without house
@@ -88,7 +92,9 @@ PUBLIC = re.compile(r"street|parkway|sidewalk|alley|highway / road|underpass|bri
                     r"computer services|pay phone|mail box|trash can|monument|hockey|campground|drive thru|encampment")
 # violence between partners is domestic violence whether or not the report carries LAPD's flag
 PARTNER = re.compile(r"\bIPV\b|intimate partner|spous|273\.5", re.I)
-NO_TIME = {"0000", "1200"}   # LAPD's times for "not known" (far above the minutes around them)
+NO_TIME = {"0000", "1200"}
+HIN_M = 20   # a block is on the High Injury Network when most of it is this close to one of its lines of the same name
+             # (its line runs down the middle of a divided street, like Venice Blvd, up to 20 m from each roadway's)   # LAPD's times for "not known" (far above the minutes around them)
 
 
 def z17(lon, lat):
@@ -213,6 +219,67 @@ for f in feats:
                      f=mean_nz(left[0], right[0]), t=mean_nz(left[1], right[1]), sd=sd, ends=(p["INT_ID_FROM"], p["INT_ID_TO"])))
 print(f"{len(segs):,} segments" + ("; left out: " + ", ".join(f"{n:,} {why}" for why, n in skipped.items()) if skipped else ""))
 
+# ---------- the High Injury Network for people walking (LADOT, 2024): which blocks are on it ----------
+# LADOT drew it on the same centerlines, so a block is on it when most of the points along it (every 20 m and the
+# middle) are within HIN_M of one of its lines with the block's street name. The name keeps out a short cross street
+# whose whole length is within HIN_M of the network.
+HIN_CELL = 64
+hin_grid = collections.defaultdict(list)   # 64 px square -> [(ax, ay, bx, by, name)]
+hin_px = 0.0
+for f in json.loads((RAW / "hin.json").read_text())["features"]:
+    g, nm = f["geometry"], f["properties"]["str_name"].replace("*", "").strip().upper()
+    for ln in g["coordinates"] if g["type"] == "MultiLineString" else [g["coordinates"]]:
+        pts = [z17(c[0], c[1]) for c in ln]
+        for (ax, ay), (bx, by) in zip(pts, pts[1:]):
+            hin_px += math.hypot(bx - ax, by - ay)
+            for gx in range(int(min(ax, bx) // HIN_CELL), int(max(ax, bx) // HIN_CELL) + 1):
+                for gy in range(int(min(ay, by) // HIN_CELL), int(max(ay, by) // HIN_CELL) + 1):
+                    hin_grid[(gx, gy)].append((ax, ay, bx, by, nm))
+
+
+def near_hin(x, y, name):
+    lim = HIN_M / PX_M
+    for gx in range(int((x - lim) // HIN_CELL), int((x + lim) // HIN_CELL) + 1):
+        for gy in range(int((y - lim) // HIN_CELL), int((y + lim) // HIN_CELL) + 1):
+            for ax, ay, bx, by, nm in hin_grid.get((gx, gy), ()):
+                if not (nm.startswith(name) or name.startswith(nm)):   # SAN FERNANDO ROAD SOUTHWEST (RDWY)
+                    continue
+                dx, dy = bx - ax, by - ay
+                t = max(0.0, min(1.0, ((x - ax) * dx + (y - ay) * dy) / (dx * dx + dy * dy or 1)))
+                if math.hypot(ax + t * dx - x, ay + t * dy - y) <= lim:
+                    return True
+    return False
+
+
+def along(lines, step):
+    """Points every step px along a segment's lines, and its middle."""
+    out, total = [], sum(math.hypot(b[0] - a[0], b[1] - a[1]) for ln in lines for a, b in zip(ln, ln[1:]))
+    mid, run, nxt = total / 2, 0.0, step / 2
+    for ln in lines:
+        for (ax, ay), (bx, by) in zip(ln, ln[1:]):
+            d = math.hypot(bx - ax, by - ay)
+            while nxt <= run + d:
+                t = (nxt - run) / (d or 1)
+                out.append((ax + t * (bx - ax), ay + t * (by - ay)))
+                nxt += step
+            if run <= mid <= run + d:
+                t = (mid - run) / (d or 1)
+                out.append((ax + t * (bx - ax), ay + t * (by - ay)))
+            run += d
+    return out, total
+
+
+hin_on_px = 0.0
+for s in segs:
+    pts, length = along(s["lines"], 20 / PX_M)
+    s["hin"] = bool(pts) and sum(near_hin(x, y, s["base"][0]) for x, y in pts) * 2 > len(pts)
+    hin_on_px += length * s["hin"]
+print(f"High Injury Network: {hin_px * PX_M / 1609.344:,.0f} miles of lines; {sum(s['hin'] for s in segs):,} blocks on it, "
+      f"{hin_on_px * PX_M / 1609.344:,.0f} miles ({hin_on_px / hin_px:.0%} of its length)")
+
+km_all = sum(math.hypot(ln[i][0] - ln[i - 1][0], ln[i][1] - ln[i - 1][1]) for sg in segs for ln in sg["lines"] for i in range(1, len(ln))) * PX_M / 1000
+km_hin = hin_on_px * PX_M / 1000
+
 # ---------- intersections: where each one is, and the streets that meet there ----------
 # A segment's line should run from its INT_ID_FROM to its INT_ID_TO; each intersection sits at the line end most of the
 # segments meeting there share, which also tells which way each line runs.
@@ -298,6 +365,8 @@ for s in sorted(segs, key=lambda s: (street_name(s["key"]), s["lo"], s["id"])):
             rec["a"] = [s["t"], s["f"]] if s["flip"] else [s["f"], s["t"]]
     if s["sd"]:
         rec["sd"] = s["sd"]
+    if s["hin"]:
+        rec["hin"] = 1
     placed[si].append((rec.get("h", -100) // 100, mx, my, f"{cx}_{cy}", len(cells[(cx, cy)]["b"])))
     cells[(cx, cy)]["b"].append(rec)
     h = hood_of(mx, my)
@@ -467,6 +536,7 @@ meta = dict(built=str(datetime.now(LA_TZ).date()), cell=CELL, cells=cell_keys, n
             blocks=sum(len(c["b"]) for c in cells.values()), intersections=len(corners),
             police=dict(start=str(p_start), end=str(p_end), n=n_police, kinds=[k for k, _ in KINDS], per_kind=n_kind,
                         people=PEOPLE, drugs=DRUGS, cars=CARS, no_time=no_time, left=dict(left)),
+            hin=dict(km=round(km_hin), share_km=round(km_hin / km_all, 3)),
             hood_stats=hood_stats, circle_q=circle_q)
 (OUT / "index.json").write_text(json.dumps(meta, separators=(",", ":")))
 (OUT / "streets.json").write_text(json.dumps(streets, separators=(",", ":")))
