@@ -283,9 +283,9 @@ hoods.json       docs/hoods.json (committed)  copied from ticket-clock/docs/stre
   per km of street; the intersections where the most were hit; what the people hit were doing and the main causes; a
   note on why the page starts in 2025. The City totals count every crash off the freeways, placed or not (2,716
   people, 215 killed, 1,003 badly hurt).
-- [ ] **7. Automation** — `weekly.yml`, `pages.yml`, GitHub Pages. Written and checked locally 2026-09-30 (the count
-  check and the release notes run against this week's build); not run on GitHub yet: it needs the push and Pages
-  turned on (Settings → Pages → Source: GitHub Actions).
+- [x] **7. Automation** — `weekly.yml`, `pages.yml`, GitHub Pages. Live since 2026-09-30: the first run passed in
+  3.5 minutes and published the `la-data` and `la-downloads` releases, and Pages deploys from Actions. Runs on Python
+  3.12, since Ubuntu 26 (`ubuntu-latest` from October 19, 2026) has no 3.9; the files match the laptop's 3.9 build.
 - [x] **Dates menu** — the date range for the map and the card (Citina, 2026-09-30); see §4.
 - [ ] **8. Sister sites** — add it to the masthead and About cards of the other four pages.
 

@@ -30,10 +30,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # The version the scripts were written and checked with; they need nothing beyond the standard library
+      # Ubuntu 26 (ubuntu-latest from Oct 2026) has no 3.9. The scripts need only the standard library, and give the
+      # same files on 3.12 as on the laptop's 3.9
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.9"
+          python-version: "3.12"
 
       # Last week's downloads (data/raw/, ~130 MB). They live in a release, not the Actions cache, because GitHub
       # drops caches unused for 7 days and this runs every 7 days.

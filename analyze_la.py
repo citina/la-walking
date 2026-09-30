@@ -1122,7 +1122,8 @@ for si, bs in placed.items():
     out = []
     for h, members in groups:
         gx, gy = sum(b[1] for b in members) / len(members), sum(b[2] for b in members) / len(members)
-        mid = min(members, key=lambda b: math.hypot(b[1] - gx, b[2] - gy))
+        # rounded, so a tie (two halves of a block) goes to the first under any Python: 3.10 changed hypot's last digit
+        mid = min(members, key=lambda b: round(math.hypot(b[1] - gx, b[2] - gy), 3))
         out.append([h, cell_ix[mid[3]], mid[4], mid[1], mid[2]])
     repeat = collections.Counter(e[0] for e in out)
     out = [e[:3] + ([hood_of(e[3], e[4])] if repeat[e[0]] > 1 or e[0] < 0 else []) for e in out]
