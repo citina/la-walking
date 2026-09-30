@@ -163,6 +163,9 @@
   .hoods path.on{fill-opacity:.25;stroke-opacity:.9;stroke-width:2}
   .hoods.near path{pointer-events:none;fill:none;stroke-opacity:.4;stroke-dasharray:7 5}
   .hoods.near path.on{stroke-opacity:.85;stroke-dasharray:none}
+  /* the whole city: neighborhoods shaded by reports of violence and robbery per km of street (--shade, set by the script) */
+  .hoods:not(.near) path{fill:var(--people);fill-opacity:var(--shade,0)}
+  .hoods:not(.near) path:hover{stroke-width:2.5;stroke-opacity:.95}
   .zoom{position:absolute;right:10px;top:10px;display:flex;flex-direction:column;gap:4px}
   .zoom button{width:34px;height:34px;border-radius:8px;border:1px solid var(--edge);background:#fcfcfb;color:#14140f;
                font:600 18px/1 "Barlow",sans-serif;cursor:pointer}
@@ -209,6 +212,39 @@
   .radius output{font:14px "IBM Plex Mono",ui-monospace,Menlo,monospace;color:var(--ink);min-width:48px}
   .spot-ring{fill:var(--walk);fill-opacity:.07;stroke:var(--map-sel);stroke-opacity:.85;stroke-width:2;stroke-dasharray:6 4;vector-effect:non-scaling-stroke;pointer-events:none}
   .nb{white-space:nowrap}
+  .loc-note{font-size:14px;color:var(--ink-2);margin:8px 0 0}
+  /* police report kinds: rows that open, most first, as on SF Streets */
+  .kinds{display:grid;gap:2px;font-size:15px;margin-top:4px}
+  .krow{display:grid;grid-template-columns:minmax(0,1fr) 110px;gap:8px 12px;width:100%;text-align:left;
+        appearance:none;border:0;background:none;color:inherit;font:inherit;cursor:pointer;border-radius:8px;padding:6px 8px}
+  .krow:hover,.krow[aria-expanded="true"]{background:var(--well)}
+  @media (max-width:480px){ .krow{grid-template-columns:minmax(0,1fr) 76px} }
+  .krow.flat,.krow.flat:hover{cursor:default;background:none}
+  .krow.flat .nm::after{content:""}
+  .krow.zero{color:var(--ink-2)}
+  .krow .nm{font-weight:500}
+  .krow .nm::after{content:"›";color:var(--ink-3);font-weight:400;margin-left:6px}
+  .krow[aria-expanded="true"] .nm::after{content:"⌄"}
+  .krow .bar{height:6px;border-radius:3px;margin-top:7px}
+  .krow .n{font-family:"IBM Plex Mono",monospace;font-size:14px;color:var(--ink-2);text-align:right}
+  .kdet{padding:2px 8px 12px}
+  .knote{font-size:14px;line-height:1.5;color:var(--ink-2)}
+  .kchart-t{font-size:14px;font-weight:600;margin:12px 0 6px}
+  .tick{font:12px "IBM Plex Mono",ui-monospace,Menlo,monospace;fill:var(--ink-2)}
+  .axis{stroke:var(--edge);stroke-width:1}
+  .rank{font-size:15px;line-height:1.45;margin-top:10px}
+  .sm-note{font-size:14px;line-height:1.5;color:var(--ink-2);margin-top:8px}
+  /* a bar per hour of the day; hour labels sit on the hour they name, every 3 hours, or every 6 where the chart is narrow */
+  .hours{display:grid;grid-template-columns:repeat(24,1fr);gap:2px;height:36px;align-items:end;margin:0 0 2px}
+  .hours i{display:flex;flex-direction:column-reverse;overflow:hidden;background:var(--edge);border-radius:2px 2px 0 0}
+  .hours i:has(span){background:none}
+  .hours i.none{height:2%;opacity:.35}
+  .hours i span{display:block}
+  .hours-ax{position:relative;height:18px;font:12px "IBM Plex Mono",monospace;color:var(--ink-2)}
+  .hours-ax span{position:absolute;top:0;transform:translateX(-50%);white-space:nowrap}
+  .hours-ax span:first-child{transform:none}
+  .hours-ax span:last-child{transform:translateX(-100%)}
+  @container (max-width:340px){ .hours-ax .h3{display:none} }
 
   /* the method: one row per topic, closed until tapped, so the page ends sooner */
   .method{max-width:var(--measure);margin:18px 0 0}
@@ -246,16 +282,22 @@
       <div aria-live="polite"><p class="find-msg" id="findMsg"></p><div class="cands" id="cands"></div></div>
 
       <div class="ctl-row">
+        <div class="chips" data-group="when"><span class="ctl-label">When</span>
+          <button class="chip sm" aria-pressed="true" data-v="any">Any time</button>
+          <button class="chip sm" aria-pressed="false" data-v="day">Daylight</button>
+          <button class="chip sm" aria-pressed="false" data-v="dark">After dark</button>
+        </div>
         <div class="radius"><label class="ctl-label" for="rad">Within</label>
           <input type="range" id="rad" min="100" max="500" step="50" value="200"><output id="radOut" for="rad">200 m</output></div>
       </div>
+      <p class="loc-note">After dark means sunset to sunrise.</p>
 
       <!-- what the map draws; each layer comes with its milestone (PLAN.md §5) -->
       <div class="chips layers" data-multi><span class="ctl-label">Show</span>
         <button class="chip sm" aria-pressed="false" data-layer="hin" disabled>High Injury Network</button>
-        <button class="chip sm" aria-pressed="false" data-layer="people" disabled>Violence &amp; robbery</button>
-        <button class="chip sm" aria-pressed="false" data-layer="drugs" disabled>Drug offenses</button>
-        <button class="chip sm" aria-pressed="false" data-layer="cars" disabled>Car break-ins</button>
+        <button class="chip sm" aria-pressed="true" data-layer="people">Violence &amp; robbery</button>
+        <button class="chip sm" aria-pressed="false" data-layer="drugs">Drug offenses</button>
+        <button class="chip sm" aria-pressed="false" data-layer="cars">Car break-ins</button>
         <button class="chip sm" aria-pressed="false" data-layer="hit" disabled>People walking hit</button>
         <button class="chip sm" aria-pressed="false" data-layer="calls" disabled>Calls to police</button>
       </div>
@@ -284,11 +326,18 @@
     <!-- one row per topic, all closed; Sources is always last -->
     <div class="method">
       <details><summary>The circle</summary>
-        <p>The card counts what's within a distance of the spot you pick: 100 to 500 m, 200 m to start (about 650 ft, a 3-minute walk). Distances are as the crow flies, not along the streets. The card names the spot by the nearest intersection, on the street you picked where it can.</p></details>
+        <p>The card counts what's within a distance of the spot you pick: 100 to 500 m, 200 m to start (about 650 ft, a 3-minute walk). Distances are as the crow flies, not along the streets. Police reports count at the place LAPD gives them. The card names the spot by the nearest intersection, on the street you picked where it can. The ranks compare the circle with one the same size around each of the City's intersections (where two or more streets meet): “Top 4% of LA intersections” means only 4% have as many or more; 96% have fewer.</p></details>
+      <details><summary>Police reports</summary>
+        <p><a href="https://data.lacity.org/d/k7nn-b2ep">LAPD's crime reports</a> on data.lacity.org from January 2025, when LAPD's new records system is complete, grouped into robbery (including carjacking); assault and other violence (assault, threats, murder, rape and other sex offenses); pickpocketing and purse snatching; weapons; drug offenses; and car break-ins (thefts from a vehicle). A report counts once per group. Only reports in public places count: streets, sidewalks, alleys, parks, parking lots, buses, trains and stations, stores, restaurants and other places open to the public, and homeless encampments. Reports in homes, workplaces, schools, hospitals and hotels aren't counted, nor ones whose place is given only as a vehicle, nor reports of domestic violence. LAPD rounds each report's place to its hundred block or intersection, so the map shows those points, not the exact spot. Where LAPD doesn't know the time, it writes midnight or noon; those reports count, but not in the times of day or in daylight and after dark. The map shades neighborhoods by reports of violence and robbery per km of street.<span id="mPol"></span></p></details>
+      <details><summary>After dark</summary>
+        <p>Between sunset and sunrise in Los Angeles on that date, worked out from the date to within a few minutes of the published times. Dusk after sunset and dawn before sunrise count as after dark. A report goes by the time it happened, as the report gives it.</p></details>
       <details><summary>Streets</summary>
         <p>Each line on the map is one stretch of street from one intersection to the next, from the <a href="https://geohub.lacity.org/datasets/d3cd48afaacd4913b923fd98c6591276">City of Los Angeles street centerlines</a>, named by its hundred block from the house numbers along it. Freeways aren't in the centerlines. The page covers the City of Los Angeles, where LAPD takes the police reports; cities inside or next to it, like Santa Monica, Beverly Hills and Culver City, have their own police.</p></details>
+      <details><summary>Limits</summary>
+        <p>Police reports show where reports were taken, which depends on where police patrol and on who calls or files online, as much as on where things happen. A street with few reports may just have few people on it; counts aren't adjusted for foot traffic. Drug offenses are reports of having or selling drugs; they don't count overdoses. LAPD's reports run about two weeks behind.</p></details>
       <details><summary>Sources</summary>
         <ul>
+          <li><a href="https://data.lacity.org/d/k7nn-b2ep">LAPD NIBRS Offenses Dataset</a>, Los Angeles Police Department via data.lacity.org</li>
           <li><a href="https://geohub.lacity.org/datasets/d3cd48afaacd4913b923fd98c6591276">Streets (Centerline)</a>, City of Los Angeles GeoHub: the streets, their names, house numbers and intersections</li>
           <li><a href="https://www.arcgis.com/home/item.html?id=d6c55385a0e749519f238b77135eafac">LA Times Neighborhood Boundaries</a>, Los Angeles Times via LA GeoHub (CC BY 4.0): the neighborhood outlines on the map</li>
           <li>Map © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, loaded from openstreetmap.org</li>
@@ -332,7 +381,10 @@ function showTip(e, html){ tip.innerHTML=html; tip.style.left=tip.style.top='0px
   tip.style.left=Math.max(8,Math.min(x,innerWidth-r.width-8))+'px'; tip.style.top=Math.max(8,Math.min(y,innerHeight-r.height-8))+'px'; }
 function hideTip(){ tip.hidden=true; }
 const stacked=()=>matchMedia('(max-width:1000px)').matches, still=()=>matchMedia('(prefers-reduced-motion: reduce)').matches;
-const msg=html=>{ $('#findMsg').innerHTML=html; };
+// answerOn: after a search on a phone, the message above the map gives the card's short answer (fillWalk), since the
+// card is below the map
+let answerOn=false;
+const msg=html=>{ answerOn=false; $('#findMsg').innerHTML=html; };
 
 // ---------- the link: the spot picked and the circle's size (#@34.05223,-118.24368/250m), except for your own location ----------
 // spot: the middle of the card's circle ({x, y, b: the block it's on or nearest, name, title, sub, you})
@@ -343,6 +395,21 @@ addEventListener('hashchange',()=>goHash());
 // links to a part of the page (About, "?") scroll there and leave the link to the spot as it is
 document.addEventListener('click',e=>{ const a=e.target.closest('a[href^="#"]'), t=a&&document.getElementById(a.getAttribute('href').slice(1)); if(!t) return;
   e.preventDefault(); t.scrollIntoView({block:'start',behavior:still()?'auto':'smooth'}); });
+
+// ---------- chip groups: one pressed per group, or any number with data-multi ----------
+// the map's layers (data-layer chips), and the time of day the card and the dots count
+const layers={people:true, drugs:false, cars:false};
+let walkWhen='any';
+$$('.chips').forEach(g=>{
+  const multi=g.hasAttribute('data-multi');
+  g.addEventListener('click',e=>{
+    const b=e.target.closest('.chip'); if(!b||b.disabled) return;
+    if(multi){ const on=b.getAttribute('aria-pressed')!=='true'; b.setAttribute('aria-pressed', String(on));
+      if(b.dataset.layer){ layers[b.dataset.layer]=on; applyLayers(); legend(); } return; }
+    g.querySelectorAll('.chip').forEach(c=>c.setAttribute('aria-pressed', String(c===b)));
+    if(g.dataset.group==='when'){ walkWhen=b.dataset.v; redrawWalk(); if(spot) fillWalk(); }
+  });
+});
 
 /* ============ map geometry: zoom-17 Web Mercator pixels (about 0.83 m each in LA), shifted to a local origin ============ */
 const N17=2**17*256, PX_M=156543.03392*Math.cos(34.05*Math.PI/180)/2**17;
@@ -364,10 +431,11 @@ const tileBox=H('div',{className:'tiles'}), tileSvg=S('svg',{'aria-hidden':'true
 const svg=S('svg',{role:'img','aria-label':'Map of Los Angeles\' neighborhoods and streets'});
 wrap.insertBefore(svg, wrap.firstChild); wrap.insertBefore(tileBox, svg.nextSibling);   // images over the lines (see .tiles)
 // every layer sits in a group that turns about the view's center by rot (radians, clockwise); 0 is north up.
-// gNear holds what only shows zoomed in: the streets and, on top, the card's circle
+// gNear holds what only shows zoomed in: the streets, police reports at the places LAPD gives (car break-ins, drug
+// offenses, violence and robbery) and, on top, the card's circle
 const gRotT=S('g',{},tileSvg), gTiles=S('g',{},gRotT), gRot=S('g',{},svg);
 const gHood=S('g',{class:'hoods'},gRot), gStreet=S('g',{},gRot), gNear=S('g',{},gRot);
-const gBlk=S('g',{},gNear), gSpot=S('g',{},gNear);
+const gBlk=S('g',{},gNear), gCars=S('g',{},gNear), gDrugs=S('g',{},gNear), gPeople=S('g',{},gNear), gSpot=S('g',{},gNear);
 const gStreetLine=S('g',{},gRot), gYou=S('g',{},gRot), gHit=S('g',{},gRot);
 let vb={x:(LX0+LX1)/2, y:(LY0+LY1)/2, w:LX1-LX0, h:0}, rot=0;
 const north=$('#znorth'), turnNorm=a=>Math.atan2(Math.sin(a),Math.cos(a));
@@ -468,8 +536,8 @@ function cellKeys(x0, y0, x1, y1){ const C=META.cell, out=[];
   for(let x=Math.floor((x0+O[0])/C);x<=Math.floor((x1+O[0])/C);x++) for(let y=Math.floor((y0+O[1])/C);y<=Math.floor((y1+O[1])/C);y++) out.push(`${x}_${y}`);
   return out; }
 const cellSet=()=>META._cells||(META._cells=new Set(META.cells));
-// a cell: {b: blocks, i: intersections}; see analyze_la.py
-const EMPTY={b:[],i:[]};
+// a cell: {b: blocks, i: intersections, r: report places}; see analyze_la.py
+const EMPTY={b:[],i:[],r:[]};
 function loadCell(key){
   if(cells.has(key)) return Promise.resolve(cells.get(key));
   if(!cellSet().has(key)){ cells.set(key,EMPTY); return Promise.resolve(EMPTY); }
@@ -484,10 +552,28 @@ function loadCell(key){
       h.addEventListener('pointerleave',hideTip); });
     // an intersection: its place and the streets that meet there, busiest first
     cell.i=(cell.i||[]).map(([x,y,...n])=>({x:x+ox,y:y+oy,n}));
+    // a report place: reports per kind in daylight, after dark and at no known time (k), and when they happened (kt)
+    cell.r=cell.r||[]; cell.r.forEach(c=>{ c.x=c.p[0]+ox; c.y=c.p[1]+oy; });
+    drawWalk(cell);
     cells.set(key,cell); return cell;
   }).catch(()=>{ cells.delete(key); msg('Couldn\'t load the streets for this part of the map. Check the connection and move the map to try again.'); return EMPTY; });
   cells.set(key,p); return p;
 }
+const loadedCells=()=>[...cells.values()].filter(c=>c&&c.b&&c!==EMPTY);
+// a place's reports of some kinds at the time of day picked: daylight, after dark, and with no time known only for any time
+const kcount=(c,kinds)=>kinds.reduce((s,k)=>s+(walkWhen!=='dark'?c.k[3*k]||0:0)+(walkWhen!=='day'?c.k[3*k+1]||0:0)+(walkWhen==='any'?c.k[3*k+2]||0:0),0);
+// dots that stay the same size on screen at any zoom: a zero-length stroke with a round (or square) cap, one path per size;
+// the size grows with the square root of the count (hole: a ring, the map showing through its middle)
+function dots(g, list, color, cap, hole=0){
+  const by={}; list.forEach(([x,y,n])=>{ if(!n) return; const d=Math.round(Math.min(30,5+3.2*Math.sqrt(n)))-hole; by[d]=(by[d]||'')+`M${x},${y}h0`; });
+  Object.entries(by).sort((a,b)=>b[0]-a[0]).forEach(([d,path])=>S('path',{d:path,class:'dot',style:`stroke:${color};stroke-width:${d};stroke-linecap:${cap};${hole?'stroke-opacity:1':''}`},g)); }
+// violence and robbery (discs), drug offenses (squares), car break-ins (rings), for the time of day picked
+function drawWalk(cell){ const P=META.police;
+  dots(gPeople,cell.r.map(c=>[c.x,c.y,kcount(c,P.people)]),'var(--people)','round');
+  dots(gDrugs,cell.r.map(c=>[c.x,c.y,kcount(c,P.drugs)]),'var(--drugs)','square');
+  const cars=cell.r.map(c=>[c.x,c.y,kcount(c,[P.cars])]); dots(gCars,cars,'var(--cars)','round'); dots(gCars,cars,'var(--map-bg)','round',5); }
+function redrawWalk(){ gPeople.innerHTML=gDrugs.innerHTML=gCars.innerHTML=''; loadedCells().forEach(drawWalk); }
+function applyLayers(){ [[gPeople,'people'],[gDrugs,'drugs'],[gCars,'cars']].forEach(([g,k])=>g.style.display=layers[k]?'':'none'); }
 const hund=h=>h?`${h} block`:'1–99 block';
 // blocks without house numbers (park roads, some private streets) go by the street alone
 const blockName=b=>META.names[b.s]+(b.h===undefined?'':', '+hund(b.h));
@@ -518,6 +604,7 @@ function toCard(){ if(!stacked()) return; const p=$('#panel'); if(p.getBoundingC
 /* ============ the spot and its circle ============ */
 // a spot, from a tap, search, your location or a link: the middle of the card's circle
 function setSpot(x, y, o, scroll=true){
+  if(answerOn&&!o.fromSearch) msg('');
   spot={x,y,...o};
   renderSpot(); legend(); setHash(); if(scroll) toCard();
 }
@@ -559,6 +646,82 @@ function renderSpot(){
 }
 // a part of the card still to come (PLAN.md §5)
 const soon=t=>`<div class="card fold"><div class="soon"><h4>${t}</h4><span class="peek">Still to come</span></div></div>`;
+// a part of the card that opens on tap, with its short answer under its name; one left open stays open for the next spot
+const openFolds=new Set();
+const fold=(k,title,peek,body)=>`<details class="card fold" data-k="${k}"${openFolds.has(k)?' open':''}><summary><h4>${title}</h4><span class="peek">${peek}</span></summary>${body}</details>`;
+const watchFolds=host=>host.querySelectorAll('.fold').forEach(d=>d.addEventListener('toggle',()=>{ d.open?openFolds.add(d.dataset.k):openFolds.delete(d.dataset.k); }));
+const fmtT=m=>{ const h=Math.floor(m/60)%24, mm=m%60, ap=h>=12?'pm':'am', h12=h%12||12; return mm?`${h12}:${String(mm).padStart(2,'0')} ${ap}`:h===12?'noon':`${h12} ${ap}`; };
+const fmtRange=(a,z)=>{ const s=fmtT(a), e=fmtT(z); return s.slice(-2)===e.slice(-2)?s.slice(0,-3)+'–'+e:s+'–'+e; };
+const fmtD=s=>new Date(s+'T12:00:00').toLocaleDateString('en-US',{day:'numeric',month:'short',year:'numeric'});
+const monYr=s=>new Date(s+'T12:00:00').toLocaleDateString('en-US',{month:'short',year:'numeric'});
+// "since Jan 2025" until the reports reach back two years, then "in the past two years"
+const sinceTxt=()=>{ const P=META.police; return (new Date(P.end)-new Date(P.start))/864e5>=725?'in the past two years':`since ${monYr(P.start)}`; };
+const whenTxt=()=>walkWhen==='day'?', in daylight':walkWhen==='dark'?', after dark':'';
+// a bar per hour of the day, each a stack of [count, color] from the bottom, with the hours under it
+function hourChart(title, byH, label){ const tot=h=>h.reduce((s,v)=>s+v[0],0), mx=Math.max(1,...byH.map(tot));
+  return `<div class="kchart-t">${title}</div><div class="hours" role="img" aria-label="${esc(label)}">${byH.map(h=>tot(h)
+    ?`<i style="height:${Math.max(8,100*tot(h)/mx)}%">${h.filter(v=>v[0]).map(([n,c])=>`<span style="flex:${n};background:${c}"></span>`).join('')}</i>`
+    :'<i class="none"></i>').join('')}</div>
+    <div class="hours-ax" aria-hidden="true">${['12am','3am','6am','9am','noon','3pm','6pm','9pm','12am'].map((t,i)=>`<span${i%2?' class="h3"':''} style="left:${i*12.5}%">${t}</span>`).join('')}</div>`; }
+// the half hours (halfHours) of some kinds, added up by the hour
+const byHour=hh=>[...Array(24)].map((_,h)=>hh[2*h]+hh[2*h+1]);
+// one kind's reports at some places (kt, analyze_la.py) by the half hour of the day, for the time of day picked; reports
+// with no time known aren't in it
+function halfHours(places, k){
+  const c=new Array(48).fill(0);
+  places.forEach(p=>{ const t=p.kt&&p.kt[k]; if(!t) return;
+    for(let i=0;i<t.length;i+=2){ const dk=t[i]>=48; if(walkWhen==='day'&&dk||walkWhen==='dark'&&!dk) continue; c[t[i]%48]+=t[i+1]; } });
+  return c;
+}
+// the half-hour dot chart from LA Street Rules' ticket kinds: a dot for every `per`, stacked up to about ten high
+function timeDots(host, c, o){
+  const mx=Math.max(...c), per=[1,2,5,10,20,50,100,200,500,1000].find(v=>mx/v<=10.5)||2000;
+  const Wd=Math.max(260,Math.round(host.clientWidth)||380), cw=Wd/48, rad=Math.min(3.2,cw*.42), step=Math.min(7,rad*2+.8);
+  const top=4, base=top+10*step+4, Hd=base+22, x=j=>j*cw;
+  H('div',{className:'kchart-t',textContent:o.title},host);
+  const g=S('svg',{viewBox:`0 0 ${Wd} ${Hd}`,role:'img','aria-label':o.label,style:'display:block;width:100%;height:auto'},host);
+  c.forEach((n,j)=>{ const dots=n?Math.max(1,Math.round(n/per)):0;
+    for(let i=0;i<dots;i++) S('circle',{cx:x(j)+cw/2,cy:base-rad-1-i*step,r:rad},g).style.fill=o.color; });
+  S('line',{x1:0,x2:Wd,y1:base,y2:base,class:'axis'},g);
+  // a tick every 3 hours; on a narrow chart (a phone) a label only every 6, so "12am" and "3am" don't run together
+  for(let h=0;h<=24;h+=3){ S('line',{x1:x(h*2),x2:x(h*2),y1:base,y2:base+4,class:'axis'},g); if(Wd<340&&h%6) continue;
+    const t=S('text',{x:x(h*2),y:base+16,'text-anchor':h===0?'start':h===24?'end':'middle',class:'tick'},g); t.textContent=h===12?'noon':fmtT(h*60%1440).replace(' ',''); }
+  const hit=S('rect',{x:0,y:0,width:Wd,height:Hd,fill:'transparent'},g);
+  hit.addEventListener('pointermove',e=>{ if(e.pointerType!=='mouse') return; const bb=g.getBoundingClientRect(), j=Math.max(0,Math.min(47,Math.floor((e.clientX-bb.left)*Wd/bb.width/cw)));
+    showTip(e,`<b>${fmtRange(j*30,j*30+30)}</b><br>${num(c[j])} ${c[j]===1?o.one:o.many}`); });
+  hit.addEventListener('pointerleave',hideTip);
+  H('div',{className:'sm-note',style:'margin-top:6px',innerHTML:`${per===1?`Each dot is one ${o.one}`:`Each dot is about ${per} ${o.many}`}, stacked by the half hour${o.when?' '+o.when:''}.`},host);
+}
+// what each kind of police report (META.police.kinds) takes in
+const KIND_NOTE={'Robbery':'Taking something from someone by force or threat, on the street, in stores and elsewhere, carjackings included.',
+  'Assault and other violence':'Assault (simple and aggravated), threats, murder, rape and other sex offenses.',
+  'Pickpocketing and purse snatching':'Thefts LAPD records as pickpocketing or purse snatching; other thefts aren\'t counted here.',
+  'Weapons':'LAPD\'s weapons offenses, such as carrying or firing a weapon against the law.',
+  'Drug offenses':'Having, using or selling drugs, or drug equipment. These don\'t count overdoses.',
+  'Car break-ins':'Thefts from a vehicle: breaking in, or taking something from inside it.'};
+const CHART_MIN=10;   // a kind needs this many on the card for its own time-of-day chart
+// a card's kinds, most first. A kind with any opens to what it takes in and, with CHART_MIN or more, its chart.
+// Open kinds stay open while the same spot is picked (the time-of-day chips redraw the card).
+const openKinds=new Set(); let openFor=null;
+function kindRows(host, rows, o){
+  const mx=Math.max(1,...rows.map(r=>r.n)), g=H('div',{className:'kinds'},host);
+  rows.sort((a,z)=>z.n-a.n).forEach(r=>{
+    const row=H(r.n?'button':'div',{className:r.n?'krow':'krow flat zero'},g);
+    H('div',{className:'nm',textContent:r.name},row);
+    const right=H('div',{},row); H('div',{className:'n',textContent:num(r.n)},right);
+    if(!r.n) return;
+    row.type='button';
+    const bar=H('div',{className:'bar'},right); bar.style.width=Math.max(4,100*r.n/mx)+'%'; bar.style.background=r.color;
+    const det=H('div',{className:'kdet'},g);
+    const show=open=>{ row.setAttribute('aria-expanded',String(open)); det.hidden=!open;
+      if(!open||det.childElementCount) return;
+      H('div',{className:'knote',textContent:r.note},det);
+      const t=r.times();
+      if(r.n>=CHART_MIN){ if(t.some(Boolean)) timeDots(det,t,{...o,color:r.color,label:`${r.name} ${o.where} by the half hour, ${num(r.n)} in all`}); }
+      else H('div',{className:'sm-note',textContent:`Fewer than ${CHART_MIN} here, too few for a chart of the time of day.`},det); };
+    row.onclick=()=>{ const open=row.getAttribute('aria-expanded')!=='true'; open?openKinds.add(r.key):openKinds.delete(r.key); show(open); };
+    show(openKinds.has(r.key)); });
+}
 let walkReq=0;
 async function fillWalk(){
   const wc=$('#walkCards'), req=++walkReq;
@@ -579,7 +742,39 @@ async function fillWalk(){
   // no City street nearby and in none of its neighborhoods: in another city, like Santa Monica, or out at sea
   spot.sub=hood?hood.name:cr||spot.b?'':'This page covers the City of Los Angeles only.';
   $('#pTitle').textContent=spot.name||spot.title; $('#pSub').textContent=spot.sub; $('#pSub').hidden=!spot.sub;
-  wc.innerHTML=soon('Reported to police')+soon('Calls to police')+soon('People walking hit');
+
+  // reported to police: the report places inside the circle
+  const P=META.police, m=M(), cq=(META.circle_q||{})[m], within='in the circle', yrs=`${sinceTxt()}${whenTxt()}`;
+  const places=around.flatMap(c=>c.r).filter(c=>far(c.x,c.y)<=R);
+  // "Top 4% of LA intersections": only 4% have as many or more within the same distance (lead: which count, where the
+  // row has more than one); any time of day only
+  const fewer=(k,v)=>cq&&cq[k]?cq[k].filter(c=>c<v).length:null;
+  const rank=(k,v,what,lead)=>{ const f=fewer(k,v); if(walkWhen!=='any'||f===null) return '';
+    if(!v) return `<div class="rank">${lead?`${lead}: none`:`No ${what}`} ${within} ${sinceTxt()}.</div>`;
+    const t=f>=50?`Top <b>${Math.max(1,100-f)}%</b> of LA intersections.`:'Fewer than most LA intersections.';
+    return `<div class="rank">${lead?`${lead}: ${t[0].toLowerCase()}${t.slice(1)}`:t}</div>`; };
+  const color=k=>P.people.includes(k)?'var(--people)':P.drugs.includes(k)?'var(--drugs)':'var(--cars)';
+  const tot=k=>places.reduce((s,c)=>s+kcount(c,[k]),0);
+  const pRows=P.kinds.map((name,k)=>({key:'p'+k,name,n:tot(k),note:KIND_NOTE[name]||'',color:color(k),times:()=>halfHours(places,k)}));
+  const sumK=ks=>ks.reduce((s,k)=>s+pRows[k].n,0), pAll=sumK(P.kinds.map((_,k)=>k));
+  const pH=ks=>byHour(ks.map(k=>halfHours(places,k)).reduce((a,v)=>a.map((x,i)=>x+v[i]))), hP=pH(P.people), hD=pH(P.drugs), hC=pH([P.cars]);
+  // after dark, of the reports with a time; those without one are said apart
+  const all=P.kinds.map((_,k)=>k), pDark=places.reduce((s,c)=>s+all.reduce((t,k)=>t+(c.k[3*k+1]||0),0),0),
+    pNone=places.reduce((s,c)=>s+all.reduce((t,k)=>t+(c.k[3*k+2]||0),0),0), known=pAll-(walkWhen==='any'?pNone:0);
+  const sw=(c,t,first)=>`<span class="nb"><span class="sw" style="height:10px;background:${c}${first?'':';margin-left:10px'}"></span> ${t}</span>`;
+  const pChart=hP.some(Boolean)||hD.some(Boolean)||hC.some(Boolean)?hourChart('What time of day they happened',hP.map((n,i)=>[[n,'var(--people)'],[hD[i],'var(--drugs)'],[hC[i],'var(--cars)']]),'Police reports by the hour')
+    +`<div class="sm-note">${sw('var(--people)','violence and robbery',1)} ${sw('var(--drugs)','drug offenses')} ${sw('var(--cars)','car break-ins')}</div>`
+    +(walkWhen==='any'?`<div class="sm-note">${num(pDark)} of ${num(known)} after dark.${pNone?` ${num(pNone)} more ${pNone===1?'has':'have'} no time recorded.`:''}</div>`:''):'';
+  const tapTxt='<div class="sm-note" style="margin:0 0 6px">Tap a kind for what it covers and when it happens.</div>';
+  const h=fold('wp','Reported to police',`${pAll?num(pAll):'None'} ${yrs}`,`${pAll?tapTxt:''}<div id="pRows"></div>
+    ${rank('people',sumK(P.people),'reports of violence and robbery','Violence and robbery')}${rank('drugs',sumK(P.drugs),'reports of drug offenses','Drug offenses')}${rank('cars',sumK([P.cars]),'car break-ins','Car break-ins')}${pChart}
+    <div class="sm-note">LAPD reports in public places, ${fmtD(P.start)} to ${fmtD(P.end)}, at the hundred block or corner LAPD gives. Counts also depend on where police patrol and who calls.</div>`);
+  wc.innerHTML=h+soon('Calls to police')+soon('People walking hit');
+  watchFolds(wc);
+  if(openFor!==spot){ openKinds.clear(); openFor=spot; }
+  kindRows($('#pRows'),pRows,{title:`What time of day they happened${whenTxt()}`,one:'report',many:'reports',when:'it happened',where:within});
+  // after a search on a phone, the short answer above the map, with a link down to the card
+  if(spot.fromSearch&&stacked()){ msg(`<b>${esc(spot.name||spot.title)}</b>: ${pAll?num(pAll):'no'} police report${pAll===1?'':'s'} within ${m} m ${yrs} · <a href="#panel">See the card ↓</a>`); answerOn=true; }
 }
 
 /* ============ neighborhoods (hoods.json, the LA Times' boundaries, from LA Street Rules): picked on the map while the
@@ -592,10 +787,10 @@ fetch('hoods.json').then(r=>{ if(!r.ok) throw new Error(r.status); return r.json
       return p; });
     const el=S('path',{'fill-rule':'evenodd',d:rings.map(p=>{ let s=''; for(let k=0;k<p.length;k+=2) s+=(k?'L':'M')+p[k]+','+p[k+1]; return s+'Z'; }).join('')},gHood);
     el.addEventListener('click',()=>{ if(!dragged){ hideTip(); goHood(i); } });
-    el.addEventListener('pointermove',e=>{ if(e.pointerType==='mouse') showTip(e,`<b>${esc(name)}</b>`); });
+    el.addEventListener('pointermove',e=>{ if(e.pointerType==='mouse') showTip(e,hoodTip(i)); });
     el.addEventListener('pointerleave',hideTip);
     return {name, rings, box:[x0,y0,x1,y1], el}; });
-  showBlocks(); if(spot) fillWalk();
+  shadeHoods(); showBlocks(); if(spot) fillWalk();
 }).catch(e=>console.warn('no neighborhoods:',e));
 function inHood(h, x, y){ const [x0,y0,x1,y1]=h.box; if(x<x0||x>x1||y<y0||y>y1) return false; let c=false;
   h.rings.forEach(p=>{ for(let i=0,j=p.length-2;i<p.length;j=i,i+=2){ const yi=p[i+1], yj=p[j+1];
@@ -606,6 +801,14 @@ const hoodAt=(x,y)=>{ const h=HOODS&&HOODS.find(h=>inHood(h,x,y)); return h?h.na
 function hoodTag(near){ const t=$('#hoodTag'), tap=near&&META&&!spot, h=near&&!tap&&hoodAt(vb.x+vb.w/2,vb.y+vb.h/2);
   t.hidden=!tap&&!h; t.textContent=tap?'Tap the map to pick a spot':h||''; }
 function pickHood(i){ if(HOODS) HOODS.forEach((h,k)=>h.el.classList.toggle('on',k===i)); showBlocks(); }
+// the whole city: each neighborhood shaded by police reports of violence and robbery per km of street (log scale).
+// META.hood_stats is in hoods.json's order: [km of street, violence and robbery, drug offenses, car break-ins]
+const hoodStat=i=>META&&META.hood_stats&&META.hood_stats[i];
+function shadeHoods(){ if(!HOODS||!META) return;
+  const rate=i=>{ const s=hoodStat(i); return s&&s[0]?s[1]/s[0]:0; }, mx=Math.max(...HOODS.map((h,i)=>rate(i)));
+  HOODS.forEach((h,i)=>h.el.style.setProperty('--shade',(.05+.85*Math.log1p(rate(i))/Math.log1p(mx)).toFixed(3))); }
+function hoodTip(i){ const s=hoodStat(i);
+  return `<b>${esc(HOODS[i].name)}</b>`+(s?`<br>${num(s[1])} police reports of violence or robbery (${(s[1]/Math.max(s[0],.1)).toFixed(1)} per km of street), ${num(s[2])} of drug offenses, ${num(s[3])} car break-ins, ${sinceTxt()}`:''); }
 // fit the neighborhood, but no wider than the view the streets show at. A bigger one centers on where its streets are
 // (the data cell nearest the middle of its cells) rather than the middle of its box, which can be hills or a park.
 // Returns whether all of it fits.
@@ -696,7 +899,7 @@ async function goGroup(si, en, n){
     const [cx,cy]=along(rep,.5), c=cell.b.filter(has).sort((a,z)=>blockDist(a,cx,cy)-blockDist(z,cx,cy));
     if(c.length){ b=c[0]; f=b.a[0]===b.a[1]?.5:Math.max(0,Math.min(1,(n-b.a[0])/(b.a[1]-b.a[0]))); } }
   const [x,y]=along(b,f); pickHood(-1); jumpTo(x,y,spotView());
-  setSpot(x,y,{b,name:n!==null?`${n} ${META.names[si]}`:''},false); showMap();
+  setSpot(x,y,{b,name:n!==null?`${n} ${META.names[si]}`:'',fromSearch:true},false); showMap();
 }
 // a hundred block's chip: its hundred, and where the street has that hundred in more than one place, the neighborhood
 // it's in
@@ -747,14 +950,22 @@ $('#locBtn').addEventListener('click',()=>{
 
 /* ============ legend: what the map itself shows right now ============ */
 let legendKey='';
-function legend(){ const near=vb.w*PX_M<=SHOW_M, key=[near,!!spot,!!fix,!!HOODS,!!META,M()].join();
+function legend(){ const near=vb.w*PX_M<=SHOW_M, key=[near,!!spot,!!fix,!!HOODS,!!META,M(),Object.values(layers)].join();
   if(key===legendKey) return; legendKey=key; const lg=$('#legend'); lg.innerHTML='';
   const item=(css,txt)=>{ const li=H('li',{},lg); H('span',{className:'sw'},li).style.cssText=css; li.append(txt); return li; };
   // the map stays light in dark mode, so its swatches sit on a bit of the map's background
   const edge='color-mix(in oklab,var(--map-sel) 60%,var(--map-bg))';
   if(near&&META&&spot) item(`width:14px;height:14px;border-radius:50%;background:color-mix(in oklab,var(--walk) 10%,var(--map-bg));border:1.5px dashed var(--map-sel)`,'The card counts inside this circle');
-  if(HOODS&&!near) item(`width:16px;height:12px;border-radius:2px;border:1.5px solid ${edge};background:color-mix(in oklab,var(--map-line) 20%,var(--map-bg))`,'Neighborhood');
-  if(HOODS&&near) item(`height:0;border-top:2px dashed ${edge};box-shadow:0 0 0 3px var(--map-bg)`,'Neighborhood edge');
+  const bg='box-shadow:0 0 0 3px var(--map-bg)', disc=(c,sq)=>`width:12px;height:12px;border-radius:${sq?1:6}px;background:${c};opacity:.8;${bg}`;
+  if(near&&META){
+    if(layers.people) item(disc('var(--people)'),'Violence & robbery reports');
+    if(layers.drugs) item(disc('var(--drugs)',1),'Drug offense reports');
+    if(layers.cars) item(`width:13px;height:13px;border-radius:50%;border:3px solid var(--cars);background:var(--map-bg);${bg}`,'Car break-ins');
+    if(layers.people||layers.drugs||layers.cars) H('li',{textContent:'Bigger = more'},lg); }
+  if(HOODS&&!near&&META) item(`width:40px;height:10px;border-radius:2px;background:linear-gradient(90deg,color-mix(in oklab,var(--people) 10%,var(--map-bg)),color-mix(in oklab,var(--people) 90%,var(--map-bg)))`,
+    'Violence & robbery reports per km of street, fewer to more');
+  else if(HOODS&&!near) item(`width:16px;height:12px;border-radius:2px;border:1.5px solid ${edge};background:color-mix(in oklab,var(--map-line) 20%,var(--map-bg))`,'Neighborhood');
+  if(HOODS&&near) item(`height:0;border-top:2px dashed ${edge};${bg}`,'Neighborhood edge');
   if(fix) item('width:14px;height:14px;border-radius:50%;background:var(--map-you);border:2.5px solid #fff;box-shadow:0 0 0 3px color-mix(in oklab,var(--map-you) 25%,transparent)','Your location');
   const li=H('li',{textContent:'Other cities, like Santa Monica, Beverly Hills and Culver City, aren\'t covered: they have their own police.'},lg);
   li.style.flexBasis='100%'; }
@@ -765,7 +976,8 @@ fetch('data/index.json').then(r=>{ if(!r.ok) throw new Error(r.status); return r
   META=m;
   const bd=new Date(m.built+'T12:00:00');
   if(!isNaN(bd)) $('#upd').textContent=`Updated ${bd.toLocaleDateString('en-US',{month:'short',day:'numeric',...(bd.getFullYear()!==new Date().getFullYear()?{year:'numeric'}:{})})} · `;
-  legendKey=''; showBlocks(); renderSpot();
+  $('#mPol').textContent=` This page has ${num(m.police.n)} reports, from ${fmtD(m.police.start)} to ${fmtD(m.police.end)}; it's rebuilt every week.`;
+  shadeHoods(); legendKey=''; showBlocks(); renderSpot();
   goHash();
 }).catch(e=>{ console.warn('no street data:',e); msg('The street data didn\'t load, so for now the map only shows the neighborhoods. Try reloading the page.'); });
 // keep the map's center, shape and tiles right when its box changes size. A map first laid out at no size (in a tab
@@ -783,7 +995,7 @@ function stick(){ const side=!stacked();
   panel.style.marginTop=side?wrap.getBoundingClientRect().top-mapcol.getBoundingClientRect().top+'px':''; }
 new ResizeObserver(stick).observe(mapcol); addEventListener('resize',stick);
 
-showRadius(); renderSpot();
+showRadius(); applyLayers(); renderSpot();
 })();
 </script>
 </body>

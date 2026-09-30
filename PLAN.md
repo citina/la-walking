@@ -83,14 +83,14 @@ about · disclaimer
 
 **The card** (for the circle picked)
 
-1. **Reported to police** — the five kinds (below), most first, then car break-ins; tap a kind for what it covers and,
-   with 10 or more, its half-hour dot chart; ranks against every intersection (violence and robbery, drug offenses and
+1. **Reported to police** — the six kinds (below), most first; tap a kind for what it covers and, with 10 or more,
+   its half-hour dot chart; ranks against every intersection (violence and robbery, drug offenses and
    car break-ins each ranked on their own); an hour chart and how many after dark. Note: "Reports are placed at the
    hundred block or corner LAPD gives. Counts also depend on where police patrol and who calls."
 2. **Calls to police** — not a circle count: "In this police reporting district (about 1.2 km²): 312 calls about fights
    and assaults since Jan 2025", per group, with the rank among the 1,135 districts and the hour chart. The district is
    drawn on the map when this row is open. Note: "A call is what someone reported, not what police found. LAPD gives
-   only the district." (open decision 3)
+   only the district." (decision 3: kept)
 3. **People walking hit** — "16 people walking hit since Jan 2025" and "3 badly hurt or killed", big number first; the
    High Injury Network streets through the circle (with a "?" to its explanation); the rank; the hour chart; after dark;
    the top causes in plain words.
@@ -103,13 +103,13 @@ answer and "See the card ↓", as on SF Streets.
 | Kind | NIBRS codes | Count |
 |---|---|---|
 | Robbery | 120 | 11,995 |
-| Assault and other violence | 13A aggravated assault, 13B simple assault, 09A murder, 11A–11D sex offenses | 79,039 |
+| Assault and other violence | 13A aggravated assault, 13B simple assault, 13C threats, 09A murder, 11A–11D sex offenses | 86,964 |
 | Pickpocketing and purse snatching | 23A, 23B | 2,516 |
 | Weapons | 520 | 5,600 |
 | Drug offenses | 35A, 35B | 12,595 |
 | Car break-ins | 23F | 31,539 |
 
-Threats (13C, 7,925) aren't in SF's kinds; still open (decision 2). Car break-ins are on this page (Citina, 2026-09-29, in
+Threats (13C, 7,925) are in "Assault and other violence" (decision 2). Car break-ins are on this page (Citina, 2026-09-29, in
 place of LA Street Rules' block card): SF Streets has them on its driving side, and LA Walking is LA's only page for
 police reports. They're their own kind and their own map layer, counted apart from violence and robbery.
 
@@ -196,8 +196,21 @@ hoods.json       docs/hoods.json (committed)  copied from ticket-clock/docs/stre
 - **Checking the state's crash data** before trusting it: for Jan–Feb 2025, LAPD's own feed has 283 crashes with a
   pedestrian (MO code 3003) and CCRS has 254 LAPD crashes with a pedestrian, about 90%. Match the two by date, time and
   streets to see which ones are missing, and say so in the method.
+- **Police reports** (built 2026-09-29): `fetch_la.py` downloads only the page's NIBRS codes, a month at a time by
+  `date_occ` (about 7,500 offenses a month; the whole window in 30 s). `analyze_la.py` keeps offenses from 2025-01-01
+  (or two years back) to the last day with at least half a typical day's count, then leaves out, in this order:
+  domestic violence (LAPD's flag, then descriptions of partner violence the flag missed: IPV, intimate partner,
+  spousal, 273.5), places that aren't public (`place_kind`: homes first, then a list of public premises; the rest,
+  like businesses, hotels, schools, hospitals and a vehicle with no place, is "other"), rows with no place, and a
+  second offense of the same kind in the same report. Each report place (LAPD's rounded point) keeps its counts per
+  kind in daylight / after dark / no time, and its half hours. For 2025-01-01 to 2026-09-18: 84,854 reports at 22,344
+  places; left out 29,021 in homes, 26,870 flagged domestic violence plus 439 by description, 12,361 elsewhere, 250
+  without a place, 2,681 second offenses. The build prints the home and "other" premises it left out, to check the
+  lists against.
 - **Ranks**: the circle's counts against a circle the same size around every intersection in the City (quantiles per
-  radius, as `circle_q` in SF Streets), computed with a KD-tree.
+  radius, as `circle_q` in SF Streets): each intersection's report places within 500 m, nearest first with running
+  totals, so every radius is one cut. At 200 m half the intersections have 2 or fewer reports of violence and robbery,
+  the top 1% at least 76.
 - **Daylight / after dark**: from the sun's times in LA on each date, as in SF.
 - **Unknown times**: LAPD writes 00:00 or 12:00 when the time isn't known (10,033 and 9,083 reports since 2025, far
   above their neighbors). Those count in totals but not in hour charts or daylight / dark.
@@ -217,10 +230,15 @@ hoods.json       docs/hoods.json (committed)  copied from ticket-clock/docs/stre
   list (about 10 s), and `docs/index.html` has the map, search (street, address, neighborhood), "Show what's around
   me", the circle and its slider, the link (`#@lat,lon/200m`), and the card named by the nearest intersection. The
   card's three rows and the layer chips say "still to come".
-- [ ] **2. Police reports** — fetch, kinds, cells, the card's first row, ranks, the layer.
+- [x] **2. Police reports** — fetch, kinds, cells, the card's first row, ranks, the layer (2026-09-29). The card's
+  "Reported to police" row (the six kinds that open to a note and a half-hour dot chart, a rank line each for violence
+  and robbery, drug offenses and car break-ins, the hour chart, after dark and no time recorded); When chips (any time,
+  daylight, after dark); three layers (violence and robbery on, drug offenses and car break-ins off); neighborhoods
+  shaded by violence and robbery per km of street; the method's police, after dark and limits rows; after a search on
+  a phone, the short answer above the map.
 - [ ] **3. High Injury Network** — the layer and the card's line.
 - [ ] **4. People walking hit** — CCRS fetch, placing by street names, the check against LAPD's feed, the card's row.
-- [ ] **5. Calls to police** — reporting districts, groups, the card's row and layer (if decision 3 keeps them).
+- [ ] **5. Calls to police** — reporting districts, groups, the card's row and layer (decision 3: kept).
 - [ ] **6. Summary** — the city as a whole, places.
 - [ ] **7. Automation** — `weekly.yml`, `pages.yml`, GitHub Pages.
 - [ ] **8. Sister sites** — add it to the masthead and About cards of the other four pages.
@@ -233,10 +251,13 @@ hoods.json       docs/hoods.json (committed)  copied from ticket-clock/docs/stre
 2. **Which reports count.** Settled 2026-09-29 (Citina): only reports in public places (street, sidewalk, alley,
    park, parking lot, transit, stores and restaurants), leaving out homes and apartments, since the page is about being
    out on foot. The build groups LAPD's premises into public place / home / other and says in the method which count.
-   Still open: reports flagged domestic violence that happened in a public place (recommended: leave out, as SF's calls
-   leave out domestic violence), and threats (13C): in "Assault and other violence", as their own kind, or left out?
-3. **Calls to police at district level.** Keep them as a district line on the card and a shaded layer, or drop them?
-   About 20% of calls have no district.
+   Reports of domestic violence are left out wherever they happened (LAPD's flag, and partner violence the flag
+   missed), and threats (13C) go in "Assault and other violence" (both Citina, 2026-09-29). Homeless encampments count
+   as public places, not a kind of their own: LAPD names the premise "Transient Encampment" on only 72 counted reports
+   since Jan 2025, at 62 places, too few for a row or a layer, and reports at an encampment on a sidewalk are often
+   filed as "Sidewalk" (Citina, 2026-09-29). Homeless shelters count as homes.
+3. **Calls to police at district level.** Settled 2026-09-29 (Citina): kept, as a district line on the card and a
+   shaded layer, not a circle count. About 20% of calls have no district.
 4. **Totals per year.** SF Streets shows totals per year since 2018. LA's old crime data (2020–2024) counts crimes
    differently from NIBRS (one crime per report, against every offense in an incident), and 2024 is split between the
    two. Options: a chart from 2025 only; or yearly totals with a marked break at 2024; or none.
