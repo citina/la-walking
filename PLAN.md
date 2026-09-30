@@ -10,7 +10,7 @@ Only the walking question. The driving question ("can I park here?") was looked 
 LA doesn't publish its curb rules (meter hours, time limits, permit hours, tow-away, closures), so the answer would rest
 on guesses. LA Street Rules keeps the parking side, from tickets.
 
-Written 2026-09-27. Nothing is built yet.
+Written 2026-09-27. Milestone 1 (the map, search and the card's shell) built 2026-09-29; see §5.
 
 ---
 
@@ -52,7 +52,7 @@ Written 2026-09-27. Nothing is built yet.
   ("Vermont Av at 8th St, 50 ft W"). They get placed at build time from the centerlines. See §4.
 - **LAPD reports carry a premise** (street, sidewalk, home, store...) and a domestic-violence flag. A third of the
   reports of violence are in a home and a quarter are flagged domestic violence. The page is about being out on foot,
-  so reports in homes are left out (open decision 2).
+  so only reports in public places count (decision 2, settled 2026-09-29).
 
 ---
 
@@ -83,9 +83,10 @@ about · disclaimer
 
 **The card** (for the circle picked)
 
-1. **Reported to police** — the five kinds (below), most first; tap a kind for what it covers and, with 10 or more,
-   its half-hour dot chart; ranks against every intersection; an hour chart and how many after dark. Note: "Reports are
-   placed at the hundred block or corner LAPD gives. Counts also depend on where police patrol and who calls."
+1. **Reported to police** — the five kinds (below), most first, then car break-ins; tap a kind for what it covers and,
+   with 10 or more, its half-hour dot chart; ranks against every intersection (violence and robbery, drug offenses and
+   car break-ins each ranked on their own); an hour chart and how many after dark. Note: "Reports are placed at the
+   hundred block or corner LAPD gives. Counts also depend on where police patrol and who calls."
 2. **Calls to police** — not a circle count: "In this police reporting district (about 1.2 km²): 312 calls about fights
    and assaults since Jan 2025", per group, with the rank among the 1,135 districts and the hour chart. The district is
    drawn on the map when this row is open. Note: "A call is what someone reported, not what police found. LAPD gives
@@ -106,9 +107,11 @@ answer and "See the card ↓", as on SF Streets.
 | Pickpocketing and purse snatching | 23A, 23B | 2,516 |
 | Weapons | 520 | 5,600 |
 | Drug offenses | 35A, 35B | 12,595 |
+| Car break-ins | 23F | 31,539 |
 
-Threats (13C, 7,925) aren't in SF's kinds; open decision 2. Car break-ins (23F, 31,539) go on LA Street Rules' block
-card instead (ticket-clock, 2026-09-27), as they went on SF Streets' driving side.
+Threats (13C, 7,925) aren't in SF's kinds; still open (decision 2). Car break-ins are on this page (Citina, 2026-09-29, in
+place of LA Street Rules' block card): SF Streets has them on its driving side, and LA Walking is LA's only page for
+police reports. They're their own kind and their own map layer, counted apart from violence and robbery.
 
 **Call groups** (by LAPD's radio code, officers' own calls left out: `006` "Code 6", 1.18M, and `902` traffic stops,
 183k, of 2.55M since Jan 2025). The exact code lists are settled at build time from the code table, as SF's
@@ -128,6 +131,7 @@ Left out, as in SF: calls marked domestic violence (620D, 242D, 620DR) and famil
 - *High Injury Network* (on) — LA County's list, the corridors inside the City.
 - *Violence & robbery reports* (on) — dots at LAPD's hundred blocks and corners, bigger = more.
 - *Drug offenses* (off).
+- *Car break-ins* (off) — dots, in their own color, as on SF Streets' driving side.
 - *People walking hit* (off) — dots at the places the build worked out.
 - *Calls to police* (off) — reporting districts shaded by calls per km² when zoomed out, the picked spot's district
   outlined.
@@ -170,8 +174,17 @@ analyze_la.py    docs/data/ (release asset)   index.json, streets.json, cells/{k
 hoods.json       docs/hoods.json (committed)  copied from ticket-clock/docs/streets/hoods.json
 ```
 
-- **Cells**: per cell, the blocks (for search and outlines), the report points `[x, y, kind counts daylight / dark,
-  half hours]`, the crashes `[x, y, hour, severity, dark, cause]`, and the HIN lines in view.
+- **Cells**: per cell, the blocks and intersections (milestone 1, below), the report points `[x, y, kind counts
+  daylight / dark, half hours]`, the crashes `[x, y, hour, severity, dark, cause]`, and the HIN lines in view.
+- **Blocks and intersections** (built 2026-09-29): a block is one centerline segment (85,055, keyed by ASSETID), as on
+  SF Streets, not LA Street Rules' hundred block cut from segments by address: the walking page needs the streets as a
+  backdrop and a place to tap, not addresses to match tickets to. Each block keeps the house numbers at the two ends of
+  its line, so a searched address lands at its place along the block. Intersections are the centerlines'
+  `INT_ID_FROM` / `INT_ID_TO` where two or more streets meet (45,815), placed where most of their segments end; N and S
+  Vermont Ave count as one street. They name the card's spot ("Near S Vermont Ave & W 36th St") and will be the places
+  the ranks compare against. `streets.json`, for search, lists each street's hundred blocks, one per place, pointing
+  into the cells, with the neighborhood where a street has the same hundred in two places (S Main St's 100 block in
+  Downtown and in Venice): 873 KB, 273 KB gzipped.
 - **Calls**: per reporting district, calls per group (daylight / dark) and their half hours; the district outlines in
   a separate file loaded when the calls row or layer opens.
 - **Placing crashes** (CCRS rows without coordinates): find the intersection of `PrimaryRoad` and `SecondaryRoad` in the
@@ -199,7 +212,11 @@ hoods.json       docs/hoods.json (committed)  copied from ticket-clock/docs/stre
 ## 5. Milestones
 
 - [x] **0. Plan** — this file, DATA_SOURCES.md, README (2026-09-27).
-- [ ] **1. Map** — LA Street Rules' map, search and neighborhoods, walk-mode card shell from SF Streets, the circle.
+- [x] **1. Map** — LA Street Rules' map, search and neighborhoods, walk-mode card shell from SF Streets, the circle
+  (2026-09-29). `fetch_la.py` downloads the centerlines, `analyze_la.py` builds the blocks, intersections and search
+  list (about 10 s), and `docs/index.html` has the map, search (street, address, neighborhood), "Show what's around
+  me", the circle and its slider, the link (`#@lat,lon/200m`), and the card named by the nearest intersection. The
+  card's three rows and the layer chips say "still to come".
 - [ ] **2. Police reports** — fetch, kinds, cells, the card's first row, ranks, the layer.
 - [ ] **3. High Injury Network** — the layer and the card's line.
 - [ ] **4. People walking hit** — CCRS fetch, placing by street names, the check against LAPD's feed, the card's row.
@@ -213,10 +230,11 @@ hoods.json       docs/hoods.json (committed)  copied from ticket-clock/docs/stre
 ## 6. Open decisions
 
 1. **Name.** Working title "LA Walking" (repo `citina/la-walking`; GitHub keeps redirects if it's renamed).
-2. **Which reports count.** Recommended: only reports in public places (street, sidewalk, alley, park, parking lot,
-   transit, stores and restaurants), leaving out homes and apartments and reports flagged domestic violence, since the
-   page is about being out on foot. Also: add threats (13C) to "Assault and other violence", as its own kind, or leave
-   out?
+2. **Which reports count.** Settled 2026-09-29 (Citina): only reports in public places (street, sidewalk, alley,
+   park, parking lot, transit, stores and restaurants), leaving out homes and apartments, since the page is about being
+   out on foot. The build groups LAPD's premises into public place / home / other and says in the method which count.
+   Still open: reports flagged domestic violence that happened in a public place (recommended: leave out, as SF's calls
+   leave out domestic violence), and threats (13C): in "Assault and other violence", as their own kind, or left out?
 3. **Calls to police at district level.** Keep them as a district line on the card and a shaded layer, or drop them?
    About 20% of calls have no district.
 4. **Totals per year.** SF Streets shows totals per year since 2018. LA's old crime data (2020–2024) counts crimes
