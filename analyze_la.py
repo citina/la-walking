@@ -41,7 +41,10 @@ it's showing:
                       out; per neighborhood (hoods.json's order) its km of street and reports of violence and robbery,
                       drug offenses and car break-ins; the crashes' window, count, causes and how many were placed;
                       the High Injury Network's share of the streets and of the people walking hit; the calls' window,
-                      groups and the calls per km2 at each percent of the districts (calls.q); and for each size of the card's circle, the counts at each
+                      groups and the calls per km2 at each percent of the districts (calls.q); the summary (the City as a
+                      whole: people walking hit and reports of violence and robbery month by month from 2025 and by
+                      hour, what the people hit were doing and why, the places visitors go and the intersections with
+                      the most people hit); and for each size of the card's circle, the counts at each
                       percent of the intersections (circle_q), for the card's ranks
   districts.json      loads with the first spot or the calls layer: LAPD's reporting districts, each as {d: [district,
                       km2, outlines (a first point in zoom-17 pixels, then the steps)], q: calls per group in daylight
@@ -104,6 +107,23 @@ PUBLIC = re.compile(r"street|parkway|sidewalk|alley|highway / road|underpass|bri
 # violence between partners is domestic violence whether or not the report carries LAPD's flag
 PARTNER = re.compile(r"\bIPV\b|intimate partner|spous|273\.5", re.I)
 NO_TIME = {"0000", "1200"}
+# the summary compares the circle around places people go, visitors especially, with the same circle around every
+# intersection: only places inside the City (Santa Monica Pier, Universal CityWalk and SoFi Stadium aren't LAPD's),
+# and none where LAPD isn't the police (LAX, UCLA and the port have their own)
+PLACE_M = 200
+PLACES = [("Hollywood & Highland", 34.10170, -118.33860), ("Hollywood & Vine", 34.10160, -118.32670),
+          ("Griffith Observatory", 34.11840, -118.30040),
+          ("Union Station", 34.05620, -118.23650), ("Olvera Street", 34.05750, -118.23800), ("Chinatown", 34.06280, -118.23800),
+          ("Grand Park", 34.05580, -118.24530), ("Walt Disney Concert Hall", 34.05530, -118.24980),
+          ("Grand Central Market", 34.05080, -118.24890), ("Pershing Square", 34.04830, -118.25260),
+          ("Little Tokyo", 34.04900, -118.23980), ("Arts District", 34.04080, -118.23260),
+          ("Crypto.com Arena and L.A. Live", 34.04300, -118.26730), ("Exposition Park", 34.01550, -118.28650),
+          ("USC", 34.02060, -118.28540), ("Dodger Stadium", 34.07390, -118.24000), ("Echo Park Lake", 34.07260, -118.26060),
+          ("MacArthur Park", 34.05770, -118.27800), ("Koreatown (Wilshire & Western)", 34.06170, -118.30900),
+          ("LACMA", 34.06390, -118.35920), ("The Grove", 34.07210, -118.35740), ("Century City", 34.05800, -118.41800),
+          ("Westwood Village", 34.06170, -118.44740),
+          ("Venice Beach Boardwalk", 33.98540, -118.47270), ("Leimert Park", 34.00450, -118.33210),
+          ("Watts Towers", 33.93880, -118.24120)]
 HIN_M = 20   # a block is on the High Injury Network when most of it is this close to one of its lines of the same name
              # (its line runs down the middle of a divided street, like Venice Blvd, up to 20 m from each roadway's)   # LAPD's times for "not known" (far above the minutes around them)
 
@@ -399,6 +419,8 @@ p_start = max(POLICE_FROM, p_end - timedelta(days=729))   # two years at most, b
 left = collections.Counter()   # why offenses were left out
 premises = collections.defaultdict(collections.Counter)   # place kind -> LAPD premise -> offenses (for the printout)
 seen = set()
+pol_hour = [[0, 0] for _ in range(24)]   # for the summary: violence and robbery, drug offenses, by the hour (known times)
+pol_month = collections.defaultdict(lambda: [0, 0, 0])   # violence and robbery per month: daylight, after dark, no time
 at = collections.defaultdict(lambda: dict(k=[0] * (3 * len(KINDS)), t=collections.defaultdict(collections.Counter)))
 for r in rows:
     d = date.fromisoformat(r["date_occ"][:10])
@@ -434,8 +456,12 @@ for r in rows:
         t = datetime(d.year, d.month, d.day, int(tm[:2]), int(tm[2:]))
         place["k"][3 * k + dark(t)] += 1
         place["t"][k][half_hour(t)] += 1
+        if k in PEOPLE or k in DRUGS:
+            pol_hour[t.hour][k in DRUGS] += 1
     else:
         place["k"][3 * k + 2] += 1
+    if k in PEOPLE:
+        pol_month[f"{d:%Y-%m}"][dark(t) if ok else 2] += 1
 n_police = len(seen)
 n_kind = [sum(p["k"][3 * k] + p["k"][3 * k + 1] + p["k"][3 * k + 2] for p in at.values()) for k in range(len(KINDS))]
 no_time = sum(p["k"][3 * k + 2] for p in at.values() for k in range(len(KINDS)))
@@ -484,6 +510,11 @@ CCRS_ALIAS = {"MLK": "MARTIN LUTHER KING JR", "MLK JR": "MARTIN LUTHER KING JR",
               "M L KING": "MARTIN LUTHER KING JR", "MARTIN L KING": "MARTIN LUTHER KING JR", "MARTIN L KING JR": "MARTIN LUTHER KING JR"}
 COMPASS = {"N": (0, -1), "S": (0, 1), "E": (1, 0), "W": (-1, 0)}
 KSI = {"Fatal", "SuspectSerious", "SevereInactive"}   # killed or badly hurt ("suspected serious injury")
+# what the person walking was doing, from the crash report
+ACTION = {"CROSSING IN CROSS WALK AT INTERSECTION": "Crossing in a crosswalk at an intersection",
+          "CROSSING IN CROSS WALK - NOT AT INTERSECTION": "Crossing in a mid-block crosswalk",
+          "CROSSING - NOT IN CROSSWALK": "Crossing outside a crosswalk", "IN ROAD - INCLUDES SHOULDER": "In the road, not crossing",
+          "NOT IN ROAD": "Not in the road", "APPROACHING/LEAVING SCHOOL BUS": "Getting on or off a school bus"}
 # the crash report's primary collision factor (a Vehicle Code section), in plain words, as SF Streets words them
 CAUSE = {"21950A": "Driver didn't yield to someone in a crosswalk", "21950": "Driver didn't yield to someone in a crosswalk",
          "21950B": "Person stepped into the car's path", "21950C": "Driver didn't slow down for someone in a crosswalk",
@@ -736,6 +767,7 @@ c_start = max(POLICE_FROM, c_end - timedelta(days=729))
 c_left, how = collections.Counter(), collections.Counter()
 causes, cause_ix = [], {}
 crashes = []   # (x, y, time, people, badly hurt or killed, cause, the block or intersection it's at)
+city_hit = []   # every crash off the freeways, placed or not: (time, people, badly hurt or killed, killed, cause, what they were doing)
 for r in latest.values():
     t = datetime.fromisoformat(r["Crash Date Time"])
     hurt = people_in.get(int(float(r["Collision Id"])), [])
@@ -744,6 +776,13 @@ for r in latest.values():
     if r["IsFreeway"] == "True":
         c_left["on a freeway"] += len(hurt)
         continue
+    cause = cause_of(r)
+    if cause not in cause_ix:
+        cause_ix[cause] = len(causes)
+        causes.append(cause)
+    one = (t, len(hurt), sum(e in KSI for e in hurt), sum(e == "Fatal" for e in hurt), cause_ix[cause],
+           ACTION.get((r["PedestrianActionDesc"] or "").strip(), "Not recorded"))
+    city_hit.append(one)   # placed or not
     at = None
     if r["Latitude"] and r["Longitude"]:
         x, y = z17(float(r["Longitude"]), float(r["Latitude"]))
@@ -791,11 +830,7 @@ for r in latest.values():
                     at = None
             else:
                 how[f"at the streets' corner ({found})"] += 1
-    cause = cause_of(r)
-    if cause not in cause_ix:
-        cause_ix[cause] = len(causes)
-        causes.append(cause)
-    crashes.append((x, y, t, len(hurt), sum(e in KSI for e in hurt), cause_ix[cause], at))
+    crashes.append((x, y, t, len(hurt), one[2], cause_ix[cause], at))
 n_hit = sum(c[3] for c in crashes)
 n_ksi = sum(c[4] for c in crashes)
 n_left = sum(c_left.values())
@@ -812,9 +847,14 @@ hit_on_hin = sum(c[3] for c in crashes if on_hin(c[6]))
 km_all = sum(math.hypot(ln[i][0] - ln[i - 1][0], ln[i][1] - ln[i - 1][1]) for sg in segs for ln in sg["lines"] for i in range(1, len(ln))) * PX_M / 1000
 km_hin = hin_on_px * PX_M / 1000
 print(f"  on the High Injury Network: {hit_on_hin:,} of {n_hit:,} people walking hit ({hit_on_hin / n_hit:.0%}), on {km_hin / km_all:.1%} of the street length")
+hood_hit = [0] * len(hoods)
 for x, y, t, n, _, cause, _ in crashes:
     cx, cy = cell_of(x, y)
-    cells[(cx, cy)]["x"].append([round(x - cx * CELL), round(y - cy * CELL), half_hour(t) if t else -1, n, cause])
+    cells[(cx, cy)]["x"].append([round(x - cx * CELL), round(y - cy * CELL), half_hour(t), n, cause])
+    h = hood_of(x, y)
+    if h >= 0:
+        hood_hit[h] += n
+hood_stats = [st + [hh] for st, hh in zip(hood_stats, hood_hit)]   # and people walking hit, last
 
 # ---------- calls to police: LAPD's calls for service, per reporting district ----------
 # LAPD gives each call only its reporting district. The groups come from the radio codes (fetch_la.py CALL_CODES);
@@ -950,9 +990,56 @@ for m in RADII:
         v = sorted(c[j] for c in circ)
         q[key] = [v[math.ceil(len(v) * p / 100) - 1] for p in range(1, 100)]
     circle_q[m] = q
+    if m == PLACE_M:
+        circ_place = circ
 print(f"  ranks: at 200 m, half the intersections have {circle_q[200]['people'][49]:,} or fewer reports of violence and robbery,",
       f"the top 1% at least {circle_q[200]['people'][98]:,}; people walking hit: half have {circle_q[200]['hit'][49]:,} or fewer,",
       f"the top 1% at least {circle_q[200]['hit'][98]:,}")
+
+# ---------- the summary: the City as a whole ----------
+# around the places people go: what's within PLACE_M, and the share of intersections with fewer (as the card's ranks)
+ranked = [sorted(c[j] for c in circ_place) for j in range(4)]
+rank_of = lambda j, v: 100 * bisect.bisect_left(ranked[j], v) // len(circ_place)
+places = []
+for name, lat, lon in PLACES:
+    x, y = z17(lon, lat)
+    r2 = (PLACE_M / PX_M) ** 2
+    v = [0, 0, 0, 0]
+    for i in range(int(x // R) - 1, int(x // R) + 2):
+        for j in range(int(y // R) - 1, int(y // R) + 2):
+            for px, py, *w in grid.get((i, j), ()):
+                if (px - x) ** 2 + (py - y) ** 2 <= r2:
+                    v = [a + b for a, b in zip(v, w)]
+    near_corner = min(corners, key=lambda n: (node_at[n][0] - x) ** 2 + (node_at[n][1] - y) ** 2)
+    places.append([name, round(x), round(y), v[3], v[0], v[1], rank_of(3, v[3]), rank_of(0, v[0]), rank_of(1, v[1])])
+    print(f"  {name}: near {' & '.join(nm for _, nm, _ in corners[near_corner][:2])}; hit {v[3]}, violence and robbery {v[0]:,}, drugs {v[1]:,}")
+# the intersections where the most people walking were hit (crashes placed there, not along a block): the top five, and
+# any tied with the fifth, ten at most
+by_corner = collections.Counter()
+for c in crashes:
+    if c[6] and c[6][0] == "i" and c[6][1] in corners:
+        by_corner[c[6][1]] += c[3]
+top = by_corner.most_common()
+cut = top[4][1] if len(top) >= 5 else 0
+top_corners = [[" & ".join(nm for _, nm, _ in corners[n][:2]), round(node_at[n][0]), round(node_at[n][1]), v] for n, v in top[:10] if v >= cut]
+# people walking hit across the City, placed or not: per month and hour, in daylight and after dark; killed and badly
+# hurt; what they were doing; the main causes
+months = lambda a, b: [f"{y}-{m:02d}" for y in range(a.year, b.year + 1) for m in range(1, 13) if (a.year, a.month) <= (y, m) <= (b.year, b.month)]
+hit_month = {m: [0, 0] for m in months(c_start, c_end)}
+hit_hour = [[0, 0] for _ in range(24)]
+for t, n, ksi, killed, cause, act in city_hit:
+    hit_month[f"{t:%Y-%m}"][dark(t)] += n
+    hit_hour[t.hour][dark(t)] += n
+summary = dict(place_m=PLACE_M, intersections=len(corners), places=places, corners=top_corners,
+               hit=dict(n=sum(c[1] for c in city_hit), ksi=sum(c[2] for c in city_hit), killed=sum(c[3] for c in city_hit),
+                        killed_dark=sum(c[3] for c in city_hit if dark(c[0])),
+                        month=[[m, *v] for m, v in hit_month.items()], hour=hit_hour,
+                        actions=[[a, n] for a, n in sum((collections.Counter({c[5]: c[1]}) for c in city_hit), collections.Counter()).most_common()],
+                        causes=[[k, n] for k, n in sum((collections.Counter({c[4]: c[1]}) for c in city_hit), collections.Counter()).most_common(6)]),
+               police=dict(month=[[m, *pol_month[m]] for m in months(p_start, p_end)], hour=pol_hour))
+H = summary["hit"]
+print(f"summary: {H['n']:,} people walking hit off the freeways ({H['killed']} killed, {H['ksi'] - H['killed']:,} badly hurt),"
+      f" {H['killed_dark']} of the killed after dark; corners with the most: " + ", ".join(f"{c[0]} {c[3]}" for c in top_corners))
 
 # ---------- write the cells, the index and the search list ----------
 shutil.rmtree(OUT, ignore_errors=True)
@@ -1001,7 +1088,7 @@ meta = dict(built=str(datetime.now(LA_TZ).date()), cell=CELL, cells=cell_keys, n
             hin=dict(km=round(km_hin), share_km=round(km_hin / km_all, 3), hit=hit_on_hin, share_hit=round(hit_on_hin / n_hit, 3)),
             calls=dict(start=str(q_start), end=str(q_end), n=n_calls, groups=CALL_GROUPS, per_group=per_group, left=dict(q_left),
                        districts=len(dist_geo), q=calls_q),
-            hood_stats=hood_stats, circle_q=circle_q)
+            hood_stats=hood_stats, circle_q=circle_q, summary=summary)
 (OUT / "index.json").write_text(json.dumps(meta, separators=(",", ":")))
 (OUT / "streets.json").write_text(json.dumps(streets, separators=(",", ":")))
 (OUT / "districts.json").write_text(json.dumps(districts_out, separators=(",", ":")))

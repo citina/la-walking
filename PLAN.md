@@ -10,8 +10,8 @@ Only the walking question. The driving question ("can I park here?") was looked 
 LA doesn't publish its curb rules (meter hours, time limits, permit hours, tow-away, closures), so the answer would rest
 on guesses. LA Street Rules keeps the parking side, from tickets.
 
-Written 2026-09-27. Milestones 1–5 (the map, police reports, the High Injury Network, people walking hit, calls to
-police) built 2026-09-29; see §5.
+Written 2026-09-27. Milestones 1–6 (the map, police reports, the High Injury Network, people walking hit, calls to
+police, the summary) built 2026-09-29; see §5.
 
 ---
 
@@ -148,10 +148,11 @@ Left out: calls marked domestic violence (242 or 245 with D after the number: 36
 - Violence and robbery reports by hour and by month.
 - Around the places visitors go: a hand-kept list of about 24 places inside the City (Hollywood & Highland, Union
   Station, Grand Park, Crypto.com Arena, Little Tokyo, Olvera St, the Venice boardwalk, Griffith Observatory, The Grove,
-  LACMA, Exposition Park, USC, UCLA, LAX...). Only places inside the City: Santa Monica Pier, Universal CityWalk and SoFi
-  aren't LAPD's.
+  LACMA, Exposition Park, USC...). Only places inside the City where LAPD is the police: Santa Monica Pier, Universal
+  CityWalk and SoFi aren't in the City, and LAX, UCLA and the port have their own police, so they're left out; so is
+  the Hollywood Bowl, whose circle holds almost no streets. 26 places in `analyze_la.py` `PLACES`.
 - The High Injury Network's share of the street length and of the people walking hit.
-- Totals per year: open decision 4.
+- Month by month from January 2025 (decision 4), not totals per year.
 
 **Wording rules** (from SF Streets, Citina)
 
@@ -265,7 +266,14 @@ hoods.json       docs/hoods.json (committed)  copied from ticket-clock/docs/stre
   the four groups with notes and dot charts, the rank per km² among districts, the hour chart, after dark) and outlines
   it on the map while open; the layer (off to start) shades every district by these calls per km², in place of the
   neighborhood shading when zoomed out.
-- [ ] **6. Summary** — the city as a whole, places.
+- [x] **6. Summary** — the city as a whole, places (2026-09-29). A section under the map: a headline and four numbers
+  (people walking hit, killed and badly hurt, the share crossing in a crosswalk, the share of the killed hit after
+  dark: 79%); people walking hit and reports of violence and robbery month by month from January 2025 (decision 4; the
+  last six months of crashes and the current month of reports faded) and by hour; 26 places visitors go, with their
+  200 m counts and ranks, sortable; the neighborhoods with the most violence and robbery and the most people walking hit
+  per km of street; the intersections where the most were hit; what the people hit were doing and the main causes; a
+  note on why the page starts in 2025. The City totals count every crash off the freeways, placed or not (2,716
+  people, 215 killed, 1,003 badly hurt).
 - [ ] **7. Automation** — `weekly.yml`, `pages.yml`, GitHub Pages.
 - [ ] **8. Sister sites** — add it to the masthead and About cards of the other four pages.
 
@@ -284,9 +292,10 @@ hoods.json       docs/hoods.json (committed)  copied from ticket-clock/docs/stre
    filed as "Sidewalk" (Citina, 2026-09-29). Homeless shelters count as homes.
 3. **Calls to police at district level.** Settled 2026-09-29 (Citina): kept, as a district line on the card and a
    shaded layer, not a circle count. About 20% of calls have no district.
-4. **Totals per year.** SF Streets shows totals per year since 2018. LA's old crime data (2020–2024) counts crimes
-   differently from NIBRS (one crime per report, against every offense in an incident), and 2024 is split between the
-   two. Options: a chart from 2025 only; or yearly totals with a marked break at 2024; or none.
+4. **Totals per year.** Settled 2026-09-29 (Citina): a chart from 2025 only, month by month. LA's old crime data
+   (2020–2024) counts crimes differently from NIBRS (one crime per report, against every offense in an incident), and
+   2024 is split between the two: the old dataset falls from about 19,000 crimes a month in January 2024 to 4,700 in
+   December, while the new one grows from a few hundred offenses to 11,000–14,000 and reaches 18,000 only in 2025.
 5. **Crash data completeness.** Checked 2026-09-29: for 2025-01-01 to 2025-03-08, LAPD's own feed has 312 crashes with a
    pedestrian (MO 3003) and CCRS 297 LAPD crashes with someone walking hurt, 95%. So crashes are shown as counted, not
    "at least". What CCRS does miss is recent months: LAPD's reports reach it late (half within 33 days, 85% within 90,
