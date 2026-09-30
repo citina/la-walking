@@ -16,9 +16,10 @@
   was hurt or killed, a year at a time, from the police window's first year: the crashes, and the people walking hurt
   in them (how badly, nothing else about them). LAPD's reports reach the state weeks or months late, so this year's and
   last year's are refetched every run, older ones once their copy is four weeks old.
+- calls/YYYY-MM.csv: LAPD's calls for service (data.lacity.org xjgu-z4ju) of the radio codes the page's call groups
+  come from (CALL_CODES: robbery, battery, assault, shots fired, threats, indecent exposure, and the disturbance calls
+  about a fight or a gun or knife), by the month they came in, the same window and refetching as the police reports.
 - fetched.json: the date each file above was downloaded.
-
-Calls to police come with the milestones that use them (PLAN.md §5).
 
 When a download fails and an older copy is on disk, that copy is kept with a warning, so a city server that's down for
 a day doesn't stop the rebuild; a file with no copy yet still stops it.
@@ -52,6 +53,15 @@ KINDS = [("Robbery", ["120"]),
          ("Drug offenses", ["35A", "35B"]),
          ("Car break-ins", ["23F"])]
 POLICE_CODES = [c for _, cs in KINDS for c in cs]
+CALLS = "https://data.lacity.org/resource/xjgu-z4ju.csv"
+CALL_COLS = "incident_number,rpt_dist,dispatch_date,dispatch_time,call_type_code,call_type_text"
+# the radio codes the call groups (analyze_la.py CALL_GROUPS) come from: 211 robbery, 242 battery, 245 assault with a
+# deadly weapon, 246 shots at a home or car, 314 indecent exposure, 422 threats; and 415, a disturbance, only when its
+# text says it's a fight or an assault, or someone has a gun or a knife
+CALL_CODES = ("(call_type_code like '211%' OR call_type_code like '242%' OR call_type_code like '245%' OR "
+              "call_type_code like '246%' OR call_type_code like '314%' OR call_type_code like '422%' OR "
+              "(call_type_code like '415%' AND (call_type_text like '%FIGH%' OR call_type_text like '%ASSLTG%' OR "
+              "call_type_text like '%GUN%' OR call_type_text like '%KNI%' OR call_type_text like '%SHOT%')))")
 CCRS = "https://data.ca.gov/api/3/action/"   # CKAN: package_show finds each year's tables, datastore_search_sql queries them
 CRASH_COLS = ["Collision Id", "Report Number", "Report Version", "NCIC Code", "Crash Date Time", "IsFreeway", "Latitude",
               "Longitude", "PrimaryRoad", "SecondaryRoad", "SecondaryDistance", "SecondaryDirection",
@@ -194,6 +204,29 @@ def main():
         if (RAW / name).exists() and i < len(window) - 2 and age(name) < POLICE_DAYS:
             continue
         refresh(name, month_fetcher(m, nxt))
+
+    # ---- calls to police, a month at a time, as the reports ----
+    qdir = RAW / "calls"
+    qdir.mkdir(exist_ok=True)
+    for old in qdir.glob("*.csv"):
+        if old.stem < f"{start:%Y-%m}":
+            old.unlink()
+            fetched.pop(f"calls/{old.name}", None)
+
+    def call_fetcher(m, nxt):
+        def fetch(path):
+            body = get(CALLS, {"$select": CALL_COLS, "$where": f"dispatch_date >= '{m}' and dispatch_date < '{nxt}' and {CALL_CODES}",
+                               "$order": "incident_number", "$limit": "1000000"}, timeout=300)
+            write(path, body)
+            n = body.count(b"\n") - 1
+            return f"calls/{path.name} {n} calls"
+        return fetch
+
+    for i, (m, nxt) in enumerate(window):
+        name = f"calls/{m:%Y-%m}.csv"
+        if (RAW / name).exists() and i < len(window) - 2 and age(name) < POLICE_DAYS:
+            continue
+        refresh(name, call_fetcher(m, nxt))
 
     # ---- people walking hurt or killed in crashes, a year at a time ----
     tables = {r["name"]: r["id"] for r in get_json(CCRS + "package_show", {"id": "ccrs"}, timeout=120)["result"]["resources"]}

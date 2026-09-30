@@ -10,8 +10,8 @@ Only the walking question. The driving question ("can I park here?") was looked 
 LA doesn't publish its curb rules (meter hours, time limits, permit hours, tow-away, closures), so the answer would rest
 on guesses. LA Street Rules keeps the parking side, from tickets.
 
-Written 2026-09-27. Milestones 1–4 (the map, police reports, the High Injury Network, people walking hit) built
-2026-09-29; see §5.
+Written 2026-09-27. Milestones 1–5 (the map, police reports, the High Injury Network, people walking hit, calls to
+police) built 2026-09-29; see §5.
 
 ---
 
@@ -114,18 +114,20 @@ Threats (13C, 7,925) are in "Assault and other violence" (decision 2). Car break
 place of LA Street Rules' block card): SF Streets has them on its driving side, and LA Walking is LA's only page for
 police reports. They're their own kind and their own map layer, counted apart from violence and robbery.
 
-**Call groups** (by LAPD's radio code, officers' own calls left out: `006` "Code 6", 1.18M, and `902` traffic stops,
-183k, of 2.55M since Jan 2025). The exact code lists are settled at build time from the code table, as SF's
-`CALL_GROUPS` were:
+**Call groups** (by LAPD's radio code, `analyze_la.py` `call_group`; built 2026-09-29, counts 2025-01-01 to
+2026-09-25). The code carries suffixes (SN suspect now, J/O just occurred, A ambulance, PS possible, 7 hate crime...),
+so a group takes every code that starts with its number:
 
-| Group | Radio codes (start) |
-|---|---|
-| Fights and assaults | 242 battery, 245 assault with a deadly weapon (not shots), 415F fight |
-| Someone with a gun or knife | 246 shots fired / heard, 245FJ shots fired, 415M6 man with knives, 417 |
-| Robbery | 211 |
-| Threats and harassment | 422 threats, 646 stalking, 314 indecent exposure |
+| Group | Radio codes | Calls |
+|---|---|---|
+| Fights and assaults | 242 battery, 245 assault with a deadly weapon (not shots), 415 disturbances whose text says fight or assaulting | 165,370 |
+| Someone with a gun or knife | 246 shooting at a home or car, 245 codes whose text says shots, 415 codes whose text says gun, knife or shots | 36,284 |
+| Robbery | 211 (carjacking and purse snatching included) | 19,039 |
+| Threats and harassment | 422 criminal threats, 314 indecent exposure (no 646 stalking codes in the data) | 26,646 |
 
-Left out, as in SF: calls marked domestic violence (620D, 242D, 620DR) and family or neighbor disputes (620x).
+Left out: calls marked domestic violence (242 or 245 with D after the number: 36,957), family or neighbor disputes
+(620, never downloaded), and 558 calls with no district. These calls nearly all have a district (99.8%, against about
+80% of all calls).
 
 **Map layers**
 
@@ -186,8 +188,11 @@ hoods.json       docs/hoods.json (committed)  copied from ticket-clock/docs/stre
   the ranks compare against. `streets.json`, for search, lists each street's hundred blocks, one per place, pointing
   into the cells, with the neighborhood where a street has the same hundred in two places (S Main St's 100 block in
   Downtown and in Venice): 873 KB, 273 KB gzipped.
-- **Calls**: per reporting district, calls per group (daylight / dark) and their half hours; the district outlines in
-  a separate file loaded when the calls row or layer opens.
+- **Calls** (built 2026-09-29): `fetch_la.py` downloads only the codes the groups come from, a month at a time by
+  `dispatch_date` (about 13,500 a month; the whole window in 50 s). `analyze_la.py` counts them per reporting district
+  and group in daylight and after dark (from the dispatch time), with their half hours, into `districts.json` with the
+  district outlines (simplified to 3 px; 750 KB, 209 KB gzipped), loaded with the first spot. Districts are ranked by
+  calls per km² (median district 0.68 km²; median 227 calls per km², top 1% at least 5,285).
 - **Placing crashes** (built 2026-09-29; CCRS rows without coordinates, 99.6% of LAPD's): the people walking hurt come
   from `InjuredWitnessPassengers` (`InjuredPersonType` Pedestrian), their crashes from `Crashes`, both queried on
   data.ca.gov (City Name Los Angeles), a year per file. A report sent twice keeps its last version. The crash goes
@@ -255,7 +260,11 @@ hoods.json       docs/hoods.json (committed)  copied from ticket-clock/docs/stre
   (2026-09-29). 2,599 people walking hurt or killed in 2,464 crashes from 2025-01-01 to 2026-09-28, 95.7% of those off
   the freeways placed; the card's row (count, HIN streets, rank, hour chart, after dark, top causes) and a map layer
   (off to start). Severity isn't shown for a circle.
-- [ ] **5. Calls to police** — reporting districts, groups, the card's row and layer (decision 3: kept).
+- [x] **5. Calls to police** — reporting districts, groups, the card's row and layer (2026-09-29). 247,339 calls from
+  2025-01-01 to 2026-09-25 in 1,131 of 1,135 districts; the card's second row counts the spot's district (its size,
+  the four groups with notes and dot charts, the rank per km² among districts, the hour chart, after dark) and outlines
+  it on the map while open; the layer (off to start) shades every district by these calls per km², in place of the
+  neighborhood shading when zoomed out.
 - [ ] **6. Summary** — the city as a whole, places.
 - [ ] **7. Automation** — `weekly.yml`, `pages.yml`, GitHub Pages.
 - [ ] **8. Sister sites** — add it to the masthead and About cards of the other four pages.

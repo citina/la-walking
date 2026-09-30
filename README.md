@@ -11,8 +11,8 @@ and built the same way as [LA Street Rules](https://citina.github.io/ticket-cloc
 map cells, rebuilt weekly. All from public data: LAPD on [data.lacity.org](https://data.lacity.org), California's crash
 reports on [data.ca.gov](https://data.ca.gov), and LADOT's High Injury Network.
 
-**Status:** milestone 4 of 8, not published yet. The map, search, the card's circle, LAPD's reports in public places,
-the High Injury Network and people walking hit work; calls to police and the city summary are still to come. See [PLAN.md](PLAN.md) for how it will work and what's still
+**Status:** milestone 5 of 8, not published yet. The map, search, the card's circle, LAPD's reports in public places,
+calls to police, the High Injury Network and people walking hit work; the city summary is still to come. See [PLAN.md](PLAN.md) for how it will work and what's still
 open, and [DATA_SOURCES.md](DATA_SOURCES.md) for which dataset is used for what and which were left out.
 
 Working title; the name is still open (PLAN.md §6).
@@ -20,9 +20,10 @@ Working title; the name is still open (PLAN.md §6).
 ## Run it
 
 ```
-python3 fetch_la.py      # LA GeoHub and data.lacity.org -> data/raw/ (the street centerlines, about 76 MB, and LAPD's
-                         # reports since 2025, about 30 MB; a minute or two)
-python3 analyze_la.py    # data/raw/ -> docs/data/ (about 20 seconds)
+python3 fetch_la.py      # LA GeoHub, data.lacity.org and data.ca.gov -> data/raw/ (the street centerlines, about
+                         # 76 MB; LAPD's reports and calls since 2025, about 50 MB; the High Injury Network, the
+                         # reporting districts and the state's crash reports, about 8 MB; a few minutes the first time)
+python3 analyze_la.py    # data/raw/ -> docs/data/ (about 35 seconds)
 python3 -m http.server 8766 --directory docs
 ```
 

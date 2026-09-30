@@ -15,7 +15,8 @@ the time, and those count with no time of day.
 
 People walking hit are the people walking hurt or killed in the state's crash reports (CCRS), off the freeways. LAPD's
 reports give two streets, not a point, so each crash is placed where they meet and moved along the first street by
-the distance the report gives (or at the house number, when there is one). The High Injury Network is LADOT's 2024
+the distance the report gives (or at the house number, when there is one). Calls to police are LAPD's calls for service in four groups by radio code, domestic violence left out, counted per
+reporting district: LAPD gives no place finer than that. The High Injury Network is LADOT's 2024
 network for people walking: a block is on it when most of the block lies along one of its lines.
 
 The map is split into cells of about 1 km, as on LA Street Rules and SF Streets, so the page only loads the few cells
@@ -39,8 +40,12 @@ it's showing:
                       exist, the cell size, the day it was built; the police reports' window, kinds and what was left
                       out; per neighborhood (hoods.json's order) its km of street and reports of violence and robbery,
                       drug offenses and car break-ins; the crashes' window, count, causes and how many were placed;
-                      the High Injury Network's share of the streets and of the people walking hit; and for each size of the card's circle, the counts at each
+                      the High Injury Network's share of the streets and of the people walking hit; the calls' window,
+                      groups and the calls per km2 at each percent of the districts (calls.q); and for each size of the card's circle, the counts at each
                       percent of the intersections (circle_q), for the card's ranks
+  districts.json      loads with the first spot or the calls layer: LAPD's reporting districts, each as {d: [district,
+                      km2, outlines (a first point in zoom-17 pixels, then the steps)], q: calls per group in daylight
+                      and after dark in turn, t: when they came in, per group, as a report place's kt}, in three lists
   streets.json        loads on the first search: for each street name, first every cell holding one of its blocks (to
                       outline the street), then its hundred blocks, one per place, as [hundred / 100 (-1 without house
                       numbers), cell number, the block nearest its middle (its place in that cell's list)], plus the
@@ -811,6 +816,109 @@ for x, y, t, n, _, cause, _ in crashes:
     cx, cy = cell_of(x, y)
     cells[(cx, cy)]["x"].append([round(x - cx * CELL), round(y - cy * CELL), half_hour(t) if t else -1, n, cause])
 
+# ---------- calls to police: LAPD's calls for service, per reporting district ----------
+# LAPD gives each call only its reporting district. The groups come from the radio codes (fetch_la.py CALL_CODES);
+# calls marked domestic violence are left out, as the reports are. A call's time is when it was dispatched.
+CALL_GROUPS = ["Fights and assaults", "Someone with a gun or knife", "Robbery", "Threats and harassment"]
+
+
+def call_group(code, text):
+    c, t = code.strip().upper(), text.upper()
+    if c.startswith("211"):
+        return 2
+    if c.startswith("246") or c.startswith(("245", "415")) and re.search(r"GUN|KNI|SHOT", t):
+        return 1
+    if re.match(r"(242|245)[APOH]*D", c):   # 242D, 245ADS, 242PD...: domestic violence
+        return "domestic violence"
+    if c.startswith(("242", "245", "415")):
+        return 0
+    if c.startswith(("422", "314")):
+        return 3
+    return "another kind of call"
+
+
+call_rows = []
+for f in sorted((RAW / "calls").glob("*.csv")):
+    with f.open(newline="") as fh:
+        call_rows += list(csv.DictReader(fh))
+per_day = collections.Counter(r["dispatch_date"][:10] for r in call_rows)
+typical = sorted(per_day.values())[len(per_day) // 2]
+q_end = date.fromisoformat(max(d for d, n in per_day.items() if n >= typical / 2))
+q_start = max(POLICE_FROM, q_end - timedelta(days=729))
+# the districts' outlines (LA GeoHub), their area and the neighborhood each is mostly in
+dist_geo = {}   # district -> [polygons as [outer ring, holes...] in zoom-17 pixels]
+for f in json.loads((RAW / "districts.json").read_text())["features"]:
+    pr, g = f["properties"], f["geometry"]
+    if pr["REPDIST"] and g:
+        polys = g["coordinates"] if g["type"] == "MultiPolygon" else [g["coordinates"]]
+        dist_geo.setdefault(int(pr["REPDIST"]), []).extend([[z17(c[0], c[1]) for c in ring] for ring in poly] for poly in polys)
+ring_area = lambda r: abs(sum(a[0] * b[1] - b[0] * a[1] for a, b in zip(r, r[1:] + r[:1]))) / 2
+dist_km2 = {d: sum(ring_area(p[0]) - sum(ring_area(h) for h in p[1:]) for p in polys) * PX_M ** 2 / 1e6 for d, polys in dist_geo.items()}
+q_left = collections.Counter()
+q_at = collections.defaultdict(lambda: dict(q=[0] * (2 * len(CALL_GROUPS)), t=collections.defaultdict(collections.Counter)))
+for r in call_rows:
+    d = date.fromisoformat(r["dispatch_date"][:10])
+    if not q_start <= d <= q_end:
+        continue
+    g = call_group(r["call_type_code"], r["call_type_text"])
+    if not isinstance(g, int):
+        q_left[g] += 1
+        continue
+    rd = int(r["rpt_dist"]) if (r["rpt_dist"] or "").isdigit() else None
+    if rd not in dist_geo:
+        q_left["no reporting district"] += 1
+        continue
+    hh, mm = int(r["dispatch_time"][:2]), int(r["dispatch_time"][3:5])
+    t = datetime(d.year, d.month, d.day, hh, mm)
+    q_at[rd]["q"][2 * g + dark(t)] += 1
+    q_at[rd]["t"][g][half_hour(t)] += 1
+n_calls = sum(sum(v["q"]) for v in q_at.values())
+per_group = [sum(v["q"][2 * g] + v["q"][2 * g + 1] for v in q_at.values()) for g in range(len(CALL_GROUPS))]
+print(f"calls to police {q_start} to {q_end}: {n_calls:,} in {len(q_at):,} of {len(dist_geo):,} reporting districts;",
+      "per group " + ", ".join(f"{CALL_GROUPS[g].lower()} {n:,}" for g, n in enumerate(per_group)))
+print("  left out: " + ", ".join(f"{n:,} {why}" for why, n in q_left.most_common()))
+# ranks: every district's calls per km2 (any time of day); calls_q[p - 1] as circle_q
+rates = sorted(sum(q_at[d]["q"]) / dist_km2[d] if d in q_at else 0 for d in dist_geo if dist_km2[d] > 0)
+calls_q = [round(rates[math.ceil(len(rates) * p / 100) - 1], 1) for p in range(1, 100)]
+print(f"  districts: median {sorted(dist_km2.values())[len(dist_km2) // 2]:.2f} km2; calls per km2, median {calls_q[49]:,}, top 1% {calls_q[98]:,}")
+
+
+def simplify(pts, tol):
+    """Douglas-Peucker: the ring's points that keep it within tol of the original."""
+    if len(pts) < 3:
+        return pts
+    (ax, ay), (bx, by) = pts[0], pts[-1]
+    dx, dy = bx - ax, by - ay
+    ln = math.hypot(dx, dy)
+    far_i, far_d = 0, -1.0
+    for i in range(1, len(pts) - 1):
+        px, py = pts[i]
+        dd = abs(dy * (px - ax) - dx * (py - ay)) / ln if ln else math.hypot(px - ax, py - ay)
+        if dd > far_d:
+            far_i, far_d = i, dd
+    if far_d <= tol:
+        return [pts[0], pts[-1]]
+    return simplify(pts[:far_i + 1], tol)[:-1] + simplify(pts[far_i:], tol)
+
+
+def encode(ring):
+    """[x, y, dx, dy, ...] in whole zoom-17 pixels, as hoods.json has them."""
+    pts = [(round(x), round(y)) for x, y in simplify(ring, 3)]
+    out = list(pts[0])
+    for (ax, ay), (bx, by) in zip(pts, pts[1:]):
+        if (bx, by) != (ax, ay):
+            out += [bx - ax, by - ay]
+    return out
+
+
+districts_out = dict(d=[], q=[], t=[])
+for d in sorted(dist_geo):
+    rings = [encode(r) for poly in dist_geo[d] for r in poly]
+    districts_out["d"].append([d, round(dist_km2[d], 2), *[r for r in rings if len(r) >= 6]])
+    v = q_at.get(d)
+    districts_out["q"].append(v["q"] if v else [])
+    districts_out["t"].append([pairs(v["t"].get(g, {})) for g in range(len(CALL_GROUPS))] if v else [])
+
 # ---------- ranks: the card's circle against the same circle around every intersection ----------
 # For each intersection, the report places within the biggest circle, nearest first, with running totals; each smaller
 # circle is then a cut of that list. circle_q[m][key] is the count at each percent of the intersections: at least p% of
@@ -891,9 +999,13 @@ meta = dict(built=str(datetime.now(LA_TZ).date()), cell=CELL, cells=cell_keys, n
             crashes=dict(start=str(c_start), end=str(c_end), n=n_hit, crashes=len(crashes), ksi=n_ksi, causes=causes,
                          left=dict(c_left), placed=round(n_hit / (n_hit + n_left - c_left["on a freeway"]), 3)),
             hin=dict(km=round(km_hin), share_km=round(km_hin / km_all, 3), hit=hit_on_hin, share_hit=round(hit_on_hin / n_hit, 3)),
+            calls=dict(start=str(q_start), end=str(q_end), n=n_calls, groups=CALL_GROUPS, per_group=per_group, left=dict(q_left),
+                       districts=len(dist_geo), q=calls_q),
             hood_stats=hood_stats, circle_q=circle_q)
 (OUT / "index.json").write_text(json.dumps(meta, separators=(",", ":")))
 (OUT / "streets.json").write_text(json.dumps(streets, separators=(",", ":")))
+(OUT / "districts.json").write_text(json.dumps(districts_out, separators=(",", ":")))
 sizes.sort()
 print(f"{len(cells):,} cells, {sum(sizes) / 2**20:.1f} MB; median {sizes[len(sizes) // 2] / 1024:.0f} KB, largest {sizes[-1] / 1024:.0f} KB;",
-      f"index.json {(OUT / 'index.json').stat().st_size / 1024:.0f} KB, streets.json {(OUT / 'streets.json').stat().st_size / 1024:.0f} KB")
+      f"index.json {(OUT / 'index.json').stat().st_size / 1024:.0f} KB, streets.json {(OUT / 'streets.json').stat().st_size / 1024:.0f} KB,",
+      f"districts.json {(OUT / 'districts.json').stat().st_size / 1024:.0f} KB")
