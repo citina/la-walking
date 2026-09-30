@@ -99,6 +99,11 @@
   .chip{appearance:none;cursor:pointer;border:1px solid var(--edge);background:var(--surface);color:var(--ink);
         font:500 14px "Barlow",system-ui,sans-serif;padding:5px 12px;border-radius:999px;min-height:34px}
   .chip:hover{border-color:var(--ink-3)}
+  /* the dates menu, a chip's size */
+  .dates select{appearance:none;-webkit-appearance:none;cursor:pointer;border:1px solid var(--edge);border-radius:999px;color:var(--ink);
+                font:500 14px "Barlow",system-ui,sans-serif;min-height:30px;padding:3px 28px 3px 10px;
+                background:var(--surface) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%23898781' stroke-width='1.5'/%3E%3C/svg%3E") no-repeat right 10px center}
+  .dates select:hover{border-color:var(--ink-3)}
   .chip[aria-pressed="true"]{background:var(--ink);color:var(--plane);border-color:var(--ink)}
   .chip.sm{font-size:14px;padding:3px 10px;min-height:30px}
   /* a layer still to come: dashed and unfilled rather than faded, so its name stays readable */
@@ -353,6 +358,7 @@
       <div aria-live="polite"><p class="find-msg" id="findMsg"></p><div class="cands" id="cands"></div></div>
 
       <div class="ctl-row">
+        <div class="radius dates"><label class="ctl-label" for="dates">Dates</label><select id="dates"><option value="all">Since Jan 2025</option></select></div>
         <div class="chips" data-group="when"><span class="ctl-label">When</span>
           <button class="chip sm" aria-pressed="true" data-v="any">Any time</button>
           <button class="chip sm" aria-pressed="false" data-v="day">Daylight</button>
@@ -449,6 +455,8 @@
     <div class="method">
       <details><summary>The circle</summary>
         <p>The card counts what's within a distance of the spot you pick: 100 to 500 m, 200 m to start (about 650 ft, a 3-minute walk). Distances are as the crow flies, not along the streets. Police reports count at the place LAPD gives them, and crashes where the page places them. The card names the spot by the nearest intersection, on the street you picked where it can. The ranks compare the circle with one the same size around each of the City's intersections (where two or more streets meet): “Top 4% of LA intersections” means only 4% have as many or more; 96% have fewer.</p></details>
+      <details><summary>Dates</summary>
+        <p>The dates menu picks which police reports, calls and crashes the map and the card count: everything since January 2025, the last 12 months, the last 90 days, the last full calendar month, or the last 30 days. Each is counted back from that dataset's own latest day, since each runs behind by a different amount: LAPD's reports about two weeks, its calls about a week, and the state's crash reports weeks to months, so recent dates have fewer crashes than they will. The ranks compare whole windows at any time of day, so they show only for all the dates. The summary below the map always covers all of them.</p></details>
       <details><summary>Police reports</summary>
         <p><a href="https://data.lacity.org/d/k7nn-b2ep">LAPD's crime reports</a> on data.lacity.org from January 2025, when LAPD's new records system is complete, grouped into robbery (including carjacking); assault and other violence (assault, threats, murder, rape and other sex offenses); pickpocketing and purse snatching; weapons; drug offenses; and car break-ins (thefts from a vehicle). A report counts once per group. Only reports in public places count: streets, sidewalks, alleys, parks, parking lots, buses, trains and stations, stores, restaurants and other places open to the public, and homeless encampments. Reports in homes, workplaces, schools, hospitals and hotels aren't counted, nor ones whose place is given only as a vehicle, nor reports of domestic violence. LAPD rounds each report's place to its hundred block or intersection, so the map shows those points, not the exact spot. Where LAPD doesn't know the time, it writes midnight or noon; those reports count, but not in the times of day or in daylight and after dark. The map shades neighborhoods by reports of violence and robbery per km of street.<span id="mPol"></span></p></details>
       <details><summary>Calls to police</summary>
@@ -531,7 +539,7 @@ document.addEventListener('click',e=>{ const a=e.target.closest('a[href^="#"]'),
 // ---------- chip groups: one pressed per group, or any number with data-multi ----------
 // the map's layers (data-layer chips), and the time of day the card and the dots count
 const layers={hin:true, people:true, drugs:false, cars:false, hit:false, calls:false};
-let walkWhen='any';
+let walkWhen='any', range='all';   // the time of day and the dates picked
 $$('.chips').forEach(g=>{
   const multi=g.hasAttribute('data-multi');
   g.addEventListener('click',e=>{
@@ -687,19 +695,21 @@ function loadCell(key){
     // an intersection: its place and the streets that meet there, busiest first
     cell.i=(cell.i||[]).map(([x,y,...n])=>({x:x+ox,y:y+oy,n}));
     // a report place: reports per kind in daylight, after dark and at no known time (k), and when they happened (kt)
-    cell.r=cell.r||[]; cell.r.forEach(c=>{ c.x=c.p[0]+ox; c.y=c.p[1]+oy; });
+    // a report: its kind, its day (from the window's first) and its half hour, from one number (analyze_la.py report_code)
+    const K=META.police.kinds.length;
+    cell.r=cell.r||[]; cell.r.forEach(c=>{ c.x=c.p[0]+ox; c.y=c.p[1]+oy; c.ev=(c.e||[]).map(v=>[v%K,Math.floor(v/K/97),Math.floor(v/K)%97]); });
     // a crash: where the page placed it, its half hour (48 and up after dark), the people walking hurt, the main cause
-    cell.x=(cell.x||[]).map(([x,y,t,n,c])=>({x:x+ox,y:y+oy,t,n,c}));
+    cell.x=(cell.x||[]).map(([x,y,t,n,c,d])=>({x:x+ox,y:y+oy,t,n,c,d}));
     drawWalk(cell);
     cells.set(key,cell); return cell;
   }).catch(()=>{ cells.delete(key); msg('Couldn\'t load the streets for this part of the map. Check the connection and move the map to try again.'); return EMPTY; });
   cells.set(key,p); return p;
 }
 const loadedCells=()=>[...cells.values()].filter(c=>c&&c.b&&c!==EMPTY);
-// a place's reports of some kinds at the time of day picked: daylight, after dark, and with no time known only for any time
-// a crash at the time of day picked
-const hitWhen=h=>walkWhen==='any'||(walkWhen==='dark')===(h.t>=48);
-const kcount=(c,kinds)=>kinds.reduce((s,k)=>s+(walkWhen!=='dark'?c.k[3*k]||0:0)+(walkWhen!=='day'?c.k[3*k+1]||0:0)+(walkWhen==='any'?c.k[3*k+2]||0:0),0);
+// a crash on the dates and at the time of day picked
+const hitWhen=h=>{ const [a,b]=rng('crashes'); return h.d>=a&&h.d<=b&&(walkWhen==='any'||(walkWhen==='dark')===(h.t>=48)); };
+// a place's reports of some kinds on the dates and at the time of day picked (those with no time known only for any time)
+const kcount=(c,kinds)=>{ const [a,b]=rng('police'); let n=0; for(const [k,d,hh] of c.ev) if(d>=a&&d<=b&&kinds.includes(k)&&whenOk(hh)) n++; return n; };
 // dots that stay the same size on screen at any zoom: a zero-length stroke with a round (or square) cap, one path per size;
 // the size grows with the square root of the count (hole: a ring, the map showing through its middle)
 function dots(g, list, color, cap, hole=0){
@@ -712,6 +722,9 @@ function drawWalk(cell){ const P=META.police;
   dots(gDrugs,cell.r.map(c=>[c.x,c.y,kcount(c,P.drugs)]),'var(--drugs)','square');
   const cars=cell.r.map(c=>[c.x,c.y,kcount(c,[P.cars])]); dots(gCars,cars,'var(--cars)','round'); dots(gCars,cars,'var(--map-bg)','round',5);
   const hit=cell.x.map(h=>[h.x,h.y,hitWhen(h)?h.n:0]); dots(gCrash,hit,'var(--map-bg)','round',-3); dots(gCrash,hit,'var(--hit)','round'); }
+// the dates picked: everything that counts them follows
+function setRange(k){ range=k; redrawWalk(); shadeHoods(); shadeDists(); if(spot) fillWalk(); legendKey=''; legend(); }
+$('#dates').addEventListener('change',e=>setRange(e.target.value));
 function redrawWalk(){ gPeople.innerHTML=gDrugs.innerHTML=gCars.innerHTML=gCrash.innerHTML=''; loadedCells().forEach(drawWalk); }
 function applyLayers(){ [[gHin,'hin'],[gPeople,'people'],[gDrugs,'drugs'],[gCars,'cars'],[gCrash,'hit'],[gDist,'calls']].forEach(([g,k])=>g.style.display=layers[k]?'':'none');
   gHood.classList.toggle('plain',layers.calls); if(layers.calls) loadDistricts().then(legend,()=>{}); }
@@ -727,13 +740,20 @@ function loadDistricts(){
       const rings=rs.map(f=>{ const p=[]; let x=f[0]-O[0], y=f[1]-O[1];
         for(let k=0;k<f.length;k+=2){ if(k){ x+=f[k]; y+=f[k+1]; } p.push(x,y); x0=Math.min(x0,x); x1=Math.max(x1,x); y0=Math.min(y0,y); y1=Math.max(y1,y); }
         return p; });
-      const dd={id,km2,rings,box:[x0,y0,x1,y1],q:d.q[i],kt:d.t[i]};
+      const dd={id,km2,rings,box:[x0,y0,x1,y1],r:d.r[i]};
       dd.d=rings.map(p=>{ let s=''; for(let k=0;k<p.length;k+=2) s+=(k?'L':'M')+p[k]+','+p[k+1]; return s+'Z'; }).join('');
       dd.el=S('path',{'fill-rule':'evenodd',d:dd.d},gDist); return dd; });
-    // shaded by calls per km2 (any time of day), on a log scale that tops out at the top 1% of districts
-    const all=dd=>(dd.q||[]).reduce((s,v)=>s+v,0), mx=META.calls.q[98];
-    DIST.forEach(dd=>dd.el.style.setProperty('--shade',(.04+.8*Math.min(1,Math.log1p(dd.km2?all(dd)/dd.km2:0)/Math.log1p(mx))).toFixed(3)));
-    legendKey=''; return DIST; }).catch(e=>{ distReq=null; throw e; })); }
+    shadeDists(); legendKey=''; return DIST; }).catch(e=>{ distReq=null; throw e; })); }
+// shaded by calls per km2 on the dates picked (any time of day), on a log scale that tops out at the top 1% of districts
+function shadeDists(){ if(!DIST) return; const ri=Math.max(0,META.ranges.findIndex(r=>r.k===range)), rate=dd=>dd.km2?dd.r[ri]/dd.km2:0;
+  const rs=DIST.map(rate).sort((a,b)=>a-b), mx=rs[Math.floor(rs.length*.99)]||1;
+  DIST.forEach(dd=>dd.el.style.setProperty('--shade',(.04+.8*Math.min(1,Math.log1p(rate(dd))/Math.log1p(mx))).toFixed(3))); }
+// a district's calls, each as [group, day, half hour], from one number (analyze_la.py): loaded with the spot
+const callsOf=new Map();
+function loadCalls(id){ const G=META.calls.groups.length;
+  if(!callsOf.has(id)) callsOf.set(id,fetch(`data/calls/${id}.json`).then(r=>r.ok?r.json():r.status===404?[]:Promise.reject(r.status))
+    .then(a=>a.map(v=>[v%G,Math.floor(v/G/96),Math.floor(v/G)%96])).catch(()=>{ callsOf.delete(id); return null; }));
+  return callsOf.get(id); }
 // the picked spot's district, outlined while the card's calls row is open
 function drawDistSel(){ gDistSel.innerHTML=''; const dd=spot&&spot.dist;
   if(dd&&openFolds.has('wq')) S('path',{d:dd.d,class:'dist-sel','fill-rule':'evenodd'},gDistSel); legend(); }
@@ -813,10 +833,23 @@ const fold=(k,title,peek,body)=>`<details class="card fold" data-k="${k}"${openF
 const watchFolds=host=>host.querySelectorAll('.fold').forEach(d=>d.addEventListener('toggle',()=>{ d.open?openFolds.add(d.dataset.k):openFolds.delete(d.dataset.k); if(d.dataset.k==='wq') drawDistSel(); }));
 const fmtT=m=>{ const h=Math.floor(m/60)%24, mm=m%60, ap=h>=12?'pm':'am', h12=h%12||12; return mm?`${h12}:${String(mm).padStart(2,'0')} ${ap}`:h===12?'noon':`${h12} ${ap}`; };
 const fmtRange=(a,z)=>{ const s=fmtT(a), e=fmtT(z); return s.slice(-2)===e.slice(-2)?s.slice(0,-3)+'–'+e:s+'–'+e; };
+const MON=['January','February','March','April','May','June','July','August','September','October','November','December'];
+const monTxt=m=>`${MON[+m.slice(5)-1]} ${m.slice(0,4)}`;
 const fmtD=s=>new Date(s+'T12:00:00').toLocaleDateString('en-US',{day:'numeric',month:'short',year:'numeric'});
 const monYr=s=>new Date(s+'T12:00:00').toLocaleDateString('en-US',{month:'short',year:'numeric'});
 // "since Jan 2025" until the reports (or the crashes) reach back two years, then "in the past two years"
 const sinceTxt=(w=META.police)=>(new Date(w.end)-new Date(w.start))/864e5>=725?'in the past two years':`since ${monYr(w.start)}`;
+// the dates picked (META.ranges): for each dataset (police, crashes, calls) its first and last day, counted from its own
+// start, since each runs behind by a different amount
+const RANGE_NAME={'12m':'12 months','90d':'90 days','30d':'30 days'};
+const rng=ds=>(META.ranges.find(r=>r.k===range)||META.ranges[0])[ds];
+const addDays=(s,n)=>{ const d=new Date(s+'T12:00:00'); d.setDate(d.getDate()+n); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; };
+const rangeDates=ds=>{ const w=META[ds], [a,b]=rng(ds); return [addDays(w.start,a),addDays(w.start,b)]; };
+// "since Jan 2025", "in the 30 days to Sep 18, 2026", "in August 2026"
+const rangeTxt=ds=>range==='all'?sinceTxt(META[ds]):range==='month'?`in ${monTxt(META.month)}`:`in the ${RANGE_NAME[range]} to ${fmtD(META[ds].end)}`;
+const rangeLabel=k=>k==='all'?`Since ${monYr(META.police.start)}`:k==='month'?`Last month (${monTxt(META.month)})`:`Last ${RANGE_NAME[k]}`;
+// a report's or a call's half hour at the time of day picked (0-47 daylight, 48-95 after dark, 96 not known)
+const whenOk=hh=>walkWhen==='any'||(walkWhen==='day'?hh<48:hh>=48&&hh<96);
 const listTxt=a=>a.length<2?a.join(''):a.slice(0,-1).join(', ')+' and '+a[a.length-1];
 const INFO='<a class="info" href="#hin" aria-label="What is the High Injury Network?" title="What is the High Injury Network?">?</a>';
 const whenTxt=()=>walkWhen==='day'?', in daylight':walkWhen==='dark'?', after dark':'';
@@ -828,12 +861,11 @@ function hourChart(title, byH, label){ const tot=h=>h.reduce((s,v)=>s+v[0],0), m
     <div class="hours-ax" aria-hidden="true">${['12am','3am','6am','9am','noon','3pm','6pm','9pm','12am'].map((t,i)=>`<span${i%2?' class="h3"':''} style="left:${i*12.5}%">${t}</span>`).join('')}</div>`; }
 // the half hours (halfHours) of some kinds, added up by the hour
 const byHour=hh=>[...Array(24)].map((_,h)=>hh[2*h]+hh[2*h+1]);
-// one kind's reports at some places (kt, analyze_la.py) by the half hour of the day, for the time of day picked; reports
-// with no time known aren't in it
-function halfHours(places, k){
-  const c=new Array(48).fill(0);
-  places.forEach(p=>{ const t=p.kt&&p.kt[k]; if(!t) return;
-    for(let i=0;i<t.length;i+=2){ const dk=t[i]>=48; if(walkWhen==='day'&&dk||walkWhen==='dark'&&!dk) continue; c[t[i]%48]+=t[i+1]; } });
+// one kind's reports (or one group's calls) at some places (their ev) by the half hour of the day, on the dates and at the
+// time of day picked; those with no time known aren't in it
+function halfHours(places, k, ds='police'){
+  const c=new Array(48).fill(0), [a,b]=rng(ds);
+  places.forEach(p=>p.ev.forEach(([j,d,hh])=>{ if(j===k&&d>=a&&d<=b&&hh<96&&whenOk(hh)) c[hh%48]++; }));
   return c;
 }
 // the half-hour dot chart from LA Street Rules' ticket kinds: a dot for every `per`, stacked up to about ten high
@@ -912,12 +944,12 @@ async function fillWalk(){
   $('#pTitle').textContent=spot.name||spot.title; $('#pSub').textContent=spot.sub; $('#pSub').hidden=!spot.sub;
 
   // reported to police: the report places inside the circle
-  const P=META.police, m=M(), cq=(META.circle_q||{})[m], within='in the circle', yrs=`${sinceTxt()}${whenTxt()}`;
+  const P=META.police, m=M(), cq=(META.circle_q||{})[m], within='in the circle', yrs=`${rangeTxt('police')}${whenTxt()}`;
   const places=around.flatMap(c=>c.r).filter(c=>far(c.x,c.y)<=R);
   // "Top 4% of LA intersections": only 4% have as many or more within the same distance (lead: which count, where the
-  // row has more than one); any time of day only
+  // row has more than one); any time of day, on all the dates, only (the ranks compare whole windows)
   const fewer=(k,v)=>cq&&cq[k]?cq[k].filter(c=>c<v).length:null;
-  const rank=(k,v,what,lead)=>{ const f=fewer(k,v); if(walkWhen!=='any'||f===null) return '';
+  const rank=(k,v,what,lead)=>{ const f=fewer(k,v); if(walkWhen!=='any'||range!=='all'||f===null) return '';
     if(!v) return `<div class="rank">${lead?`${lead}: none`:`No ${what}`} ${within} ${sinceTxt()}.</div>`;
     const t=f>=50?`Top <b>${Math.max(1,100-f)}%</b> of LA intersections.`:'Fewer than most LA intersections.';
     return `<div class="rank">${lead?`${lead}: ${t[0].toLowerCase()}${t.slice(1)}`:t}</div>`; };
@@ -927,8 +959,9 @@ async function fillWalk(){
   const sumK=ks=>ks.reduce((s,k)=>s+pRows[k].n,0), pAll=sumK(P.kinds.map((_,k)=>k));
   const pH=ks=>byHour(ks.map(k=>halfHours(places,k)).reduce((a,v)=>a.map((x,i)=>x+v[i]))), hP=pH(P.people), hD=pH(P.drugs), hC=pH([P.cars]);
   // after dark, of the reports with a time; those without one are said apart
-  const all=P.kinds.map((_,k)=>k), pDark=places.reduce((s,c)=>s+all.reduce((t,k)=>t+(c.k[3*k+1]||0),0),0),
-    pNone=places.reduce((s,c)=>s+all.reduce((t,k)=>t+(c.k[3*k+2]||0),0),0), known=pAll-(walkWhen==='any'?pNone:0);
+  const [pa,pb]=rng('police'); let pDark=0, pNone=0;
+  places.forEach(c=>c.ev.forEach(([,d,hh])=>{ if(d<pa||d>pb) return; if(hh===96) pNone++; else if(hh>=48) pDark++; }));
+  const known=pAll-(walkWhen==='any'?pNone:0), [pFrom,pTo]=rangeDates('police');
   const sw=(c,t,first)=>`<span class="nb"><span class="sw" style="height:10px;background:${c}${first?'':';margin-left:10px'}"></span> ${t}</span>`;
   const pChart=hP.some(Boolean)||hD.some(Boolean)||hC.some(Boolean)?hourChart('What time of day they happened',hP.map((n,i)=>[[n,'var(--people)'],[hD[i],'var(--drugs)'],[hC[i],'var(--cars)']]),'Police reports by the hour')
     +`<div class="sm-note">${sw('var(--people)','violence and robbery',1)} ${sw('var(--drugs)','drug offenses')} ${sw('var(--cars)','car break-ins')}</div>`
@@ -936,10 +969,10 @@ async function fillWalk(){
   const tapTxt='<div class="sm-note" style="margin:0 0 6px">Tap a kind for what it covers and when it happens.</div>';
   const h=fold('wp','Reported to police',`${pAll?num(pAll):'None'} ${yrs}`,`${pAll?tapTxt:''}<div id="pRows"></div>
     ${rank('people',sumK(P.people),'reports of violence and robbery','Violence and robbery')}${rank('drugs',sumK(P.drugs),'reports of drug offenses','Drug offenses')}${rank('cars',sumK([P.cars]),'car break-ins','Car break-ins')}${pChart}
-    <div class="sm-note">LAPD reports in public places, ${fmtD(P.start)} to ${fmtD(P.end)}, at the hundred block or corner LAPD gives. Counts also depend on where police patrol and who calls.</div>`);
+    <div class="sm-note">LAPD reports in public places, ${fmtD(pFrom)} to ${fmtD(pTo)}, at the hundred block or corner LAPD gives. Counts also depend on where police patrol and who calls.</div>`);
   // people walking hit: the crashes the page placed inside the circle (analyze_la.py), people counted. How badly they were
   // hurt isn't shown for a circle: so few people that it could point to someone
-  const C=META.crashes, cyrs=`${sinceTxt(C)}${whenTxt()}`;
+  const C=META.crashes, cyrs=`${rangeTxt('crashes')}${whenTxt()}`, [cFrom,cTo]=rangeDates('crashes');
   const hits=around.flatMap(c=>c.x).filter(x=>far(x.x,x.y)<=R&&hitWhen(x)), nHit=hits.reduce((s,x)=>s+x.n,0);
   const hinSeen=new Map(); around.flatMap(c=>c.b).filter(b=>b.hin&&blockDist(b,sx,sy)<=R).forEach(b=>{ const n=META.names[b.s]; if(!hinSeen.has(base(n))) hinSeen.set(base(n),n); });
   const hinNames=[...hinSeen.values()].sort();
@@ -955,26 +988,31 @@ async function fillWalk(){
     hc+=`<div class="sm-note" style="margin-top:12px">Main cause in the crash report:</div><table class="ktab">${Object.entries(why).sort((a,c)=>c[1]-a[1]).slice(0,3)
       .map(([k,n])=>`<tr><td>${esc(C.causes[k])}</td><td class="n">${num(n)}</td></tr>`).join('')}</table>`;
   }
-  hc+=`<div class="sm-note">People walking hurt or killed by a vehicle, ${fmtD(C.start)} to ${fmtD(C.end)}, from the state's crash reports. LAPD's reports name the streets, not the spot, so the page places each crash from them. The last few months are still coming in.</div>`;
+  // the state gets LAPD's crash reports late: about 85% within three months, 94% within six
+  const fresh=(new Date(C.end)-new Date(cFrom))/864e5<180;
+  hc+=`<div class="sm-note">People walking hurt or killed by a vehicle, ${fmtD(cFrom)} to ${fmtD(cTo)}, from the state's crash reports. LAPD's reports name the streets, not the spot, so the page places each crash from them. ${fresh?'<b>These dates are still coming in</b>: the state gets many crash reports weeks or months late, so this count will grow.':'The last few months are still coming in.'}</div>`;
   // calls to police: LAPD gives only the district, so the row counts the spot's whole district, which it outlines
   const Q=META.calls, dist=DD&&DD.find(d=>inHood(d,sx,sy)); spot.dist=dist||null;
+  const qev=dist?await loadCalls(dist.id):null;
+  if(req!==walkReq) return;
   let qh, qRows=[];
-  if(!DD) qh=fold('wq','Calls to police','Didn\'t load','<div class="sm-note" style="margin-top:0">The reporting districts didn\'t load. Check the connection and pick the spot again.</div>');
+  if(!DD||dist&&!qev) qh=fold('wq','Calls to police','Didn\'t load','<div class="sm-note" style="margin-top:0">The reporting districts didn\'t load. Check the connection and pick the spot again.</div>');
   else if(!dist) qh=fold('wq','Calls to police','Not in an LAPD reporting district','<div class="sm-note" style="margin-top:0">This spot is in none of LAPD\'s reporting districts, so there are no calls to count.</div>');
   else {
-    const qyrs=`${sinceTxt(Q)}${whenTxt()}`, qn=g=>(walkWhen!=='dark'?dist.q[2*g]||0:0)+(walkWhen!=='day'?dist.q[2*g+1]||0:0);
-    qRows=Q.groups.map((name,g)=>({key:'q'+g,name,n:qn(g),note:CALL_NOTE[g],color:'var(--calls)',times:()=>halfHours([dist],g)}));
-    const qAll=qRows.reduce((s,r)=>s+r.n,0), qH=byHour(Q.groups.map((_,g)=>halfHours([dist],g)).reduce((a,v)=>a.map((x,i)=>x+v[i])));
-    const qDark=Q.groups.reduce((s,_,g)=>s+(dist.q[2*g+1]||0),0), qAny=Q.groups.reduce((s,_,g)=>s+(dist.q[2*g]||0)+(dist.q[2*g+1]||0),0);
+    const qyrs=`${rangeTxt('calls')}${whenTxt()}`, [qa,qb]=rng('calls'), inQ=d=>d>=qa&&d<=qb, dq={ev:qev}, [qFrom,qTo]=rangeDates('calls');
+    const qn=g=>qev.reduce((s,[j,d,hh])=>s+(j===g&&inQ(d)&&whenOk(hh)),0);
+    qRows=Q.groups.map((name,g)=>({key:'q'+g,name,n:qn(g),note:CALL_NOTE[g],color:'var(--calls)',times:()=>halfHours([dq],g,'calls')}));
+    const qAll=qRows.reduce((s,r)=>s+r.n,0), qH=byHour(Q.groups.map((_,g)=>halfHours([dq],g,'calls')).reduce((a,v)=>a.map((x,i)=>x+v[i])));
+    const qDark=qev.reduce((s,[,d,hh])=>s+(inQ(d)&&hh>=48),0), qAny=qev.length;
     const f=Q.q.filter(c=>c<qAny/dist.km2).length;
-    const qRank=walkWhen!=='any'?'':`<div class="rank">${!qAny?'No calls about these in this district.':f>=50?`Top <b>${Math.max(1,100-f)}%</b> of LA's reporting districts, for these calls per km².`:'Fewer per km² than most of LA\'s reporting districts.'}</div>`;
+    const qRank=walkWhen!=='any'||range!=='all'?'':`<div class="rank">${!qAny?'No calls about these in this district.':f>=50?`Top <b>${Math.max(1,100-f)}%</b> of LA's reporting districts, for these calls per km².`:'Fewer per km² than most of LA\'s reporting districts.'}</div>`;
     const qChart=qH.some(Boolean)?hourChart('What time of day the calls came in',qH.map(n=>[[n,'var(--calls)']]),'Calls to police by the hour')
       +(walkWhen==='any'?`<div class="sm-note">${num(qDark)} of ${num(qAll)} after dark.</div>`:''):'';
     const km=dist.km2<1?dist.km2.toFixed(2).replace(/0$/,''):dist.km2.toFixed(1);
     qh=fold('wq','Calls to police',`${qAll?num(qAll):'None'} in this district ${qyrs}`,
       `<div class="sm-note" style="margin:0 0 8px">Calls to police in this reporting district (${km} km², outlined on the map), not only the circle.</div>${qAll?tapTxt:''}<div id="qRows"></div>
       ${qRank}${qChart}
-      <div class="sm-note">LAPD's calls, ${fmtD(Q.start)} to ${fmtD(Q.end)}. A call is what someone reported, not what police found. LAPD gives only the district, not where in it. Calls about domestic violence aren't counted.</div>`);
+      <div class="sm-note">LAPD's calls, ${fmtD(qFrom)} to ${fmtD(qTo)}. A call is what someone reported, not what police found. LAPD gives only the district, not where in it. Calls about domestic violence aren't counted.</div>`);
   }
   wc.innerHTML=h+qh+fold('wh','People walking hit',`${nHit?num(nHit):'None'} ${cyrs}`,hc);
   watchFolds(wc);
@@ -1012,12 +1050,14 @@ function hoodTag(near){ const t=$('#hoodTag'), tap=near&&META&&!spot, h=near&&!t
 function pickHood(i){ if(HOODS) HOODS.forEach((h,k)=>h.el.classList.toggle('on',k===i)); showBlocks(); }
 // the whole city: each neighborhood shaded by police reports of violence and robbery per km of street (log scale).
 // META.hood_stats is in hoods.json's order: [km of street, violence and robbery, drug offenses, car break-ins]
-const hoodStat=i=>META&&META.hood_stats&&META.hood_stats[i];
+// a neighborhood's km of street, then its violence and robbery, drug offenses, car break-ins and people walking hit on
+// the dates picked
+const hoodStat=i=>{ const s=META&&META.hood_stats&&META.hood_stats[i], r=META&&META.hood_range&&META.hood_range[range]; return s&&r?[s[0],...r[i]]:s; };
 function shadeHoods(){ if(!HOODS||!META) return;
   const rate=i=>{ const s=hoodStat(i); return s&&s[0]?s[1]/s[0]:0; }, mx=Math.max(...HOODS.map((h,i)=>rate(i)));
   HOODS.forEach((h,i)=>h.el.style.setProperty('--shade',(.05+.85*Math.log1p(rate(i))/Math.log1p(mx)).toFixed(3))); }
 function hoodTip(i){ const s=hoodStat(i);
-  return `<b>${esc(HOODS[i].name)}</b>`+(s?`<br>${num(s[1])} police reports of violence or robbery (${(s[1]/Math.max(s[0],.1)).toFixed(1)} per km of street), ${num(s[2])} of drug offenses, ${num(s[3])} car break-ins, ${sinceTxt()}; ${num(s[4]||0)} people walking hit`:''); }
+  return `<b>${esc(HOODS[i].name)}</b>`+(s?`<br>${num(s[1])} police reports of violence or robbery (${(s[1]/Math.max(s[0],.1)).toFixed(1)} per km of street), ${num(s[2])} of drug offenses, ${num(s[3])} car break-ins, ${rangeTxt('police')}; ${num(s[4]||0)} people walking hit ${rangeTxt('crashes')}`:''); }
 // fit the neighborhood, but no wider than the view the streets show at. A bigger one centers on where its streets are
 // (the data cell nearest the middle of its cells) rather than the middle of its box, which can be hills or a park.
 // Returns whether all of it fits.
@@ -1159,7 +1199,7 @@ $('#locBtn').addEventListener('click',()=>{
 
 /* ============ legend: what the map itself shows right now ============ */
 let legendKey='';
-function legend(){ const near=vb.w*PX_M<=SHOW_M, key=[near,!!spot,!!fix,!!HOODS,!!META,!!DIST,gDistSel.childElementCount,M(),Object.values(layers)].join();
+function legend(){ const near=vb.w*PX_M<=SHOW_M, key=[near,!!spot,!!fix,!!HOODS,!!META,!!DIST,gDistSel.childElementCount,M(),range,Object.values(layers)].join();
   if(key===legendKey) return; legendKey=key; const lg=$('#legend'); lg.innerHTML='';
   const item=(css,txt)=>{ const li=H('li',{},lg); H('span',{className:'sw'},li).style.cssText=css; li.append(txt); return li; };
   // the map stays light in dark mode, so its swatches sit on a bit of the map's background
@@ -1188,8 +1228,6 @@ function legend(){ const near=vb.w*PX_M<=SHOW_M, key=[near,!!spot,!!fix,!!HOODS,
 const pct=(a,b)=>Math.round(100*a/Math.max(1,b));
 const hourTxt=h=>(h%24===0?'midnight':h===12?'noon':h<12?`${h} am`:`${h-12} pm`);
 const sum=a=>a.reduce((s,v)=>s+v,0);
-const MON=['January','February','March','April','May','June','July','August','September','October','November','December'];
-const monTxt=m=>`${MON[+m.slice(5)-1]} ${m.slice(0,4)}`;
 // bars from the bottom: data is a list of stacks, each [value, color, opacity], labels [position in %, text, class]
 function bars(el, data, labels, tip){
   const mx=Math.max(1,...data.map(d=>sum(d.map(s=>s[0]))));
@@ -1285,6 +1323,7 @@ fetch('data/index.json').then(r=>{ if(!r.ok) throw new Error(r.status); return r
   const C=m.crashes, H=m.hin;
   $('#mHit').textContent=` This page has ${num(C.n)} people walking hit, from ${fmtD(C.start)} to ${fmtD(C.end)}: the ${Math.floor(C.placed*100)}% of those off the freeways it could place. The rest (the streets weren't found, or meet in more than one place in the same district) aren't on the map or the card. Checked against LAPD's own crash map for January to March 2025, before LAPD stopped publishing it, three in four land within 50 m of LAPD's point.`;
   $('#hinShare').textContent=` It's ${Math.round(H.share_km*100)}% of the City's streets, but ${Math.round(H.share_hit*100)}% of the people walking hit ${sinceTxt(C)} were on it or at its corners.`;
+  $('#dates').innerHTML=m.ranges.map(r=>`<option value="${r.k}">${esc(rangeLabel(r.k))}</option>`).join('');
   shadeHoods(); legendKey=''; showBlocks(); renderSpot(); buildSummary();
   goHash();
 }).catch(e=>{ console.warn('no street data:',e); msg('The street data didn\'t load, so for now the map only shows the neighborhoods. Try reloading the page.'); });

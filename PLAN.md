@@ -70,7 +70,7 @@ mast            LA Walking · (sister sites)                        Updated Sep 
 h1 + lede       "Pick a spot in LA to see what gets reported to police around it, and how often people walking are hit
                  by cars there." + a link to the city summary
 find bar        Show what's around me · search address / street / neighborhood / place
-time control    When [Any | Daylight | After dark]   Within [100–500 m slider, 200 m to start]
+time control    Dates [Since Jan 2025 ▾]   When [Any | Daylight | After dark]   Within [100–500 m slider, 200 m to start]
 ┌───────────────── map ─────────────────┐ ┌──────── card ────────┐
 │ layer chips                           │ │ "Near X & Y", hood    │
 │ OSM tiles + layers + the circle       │ │ rows (below)          │
@@ -233,8 +233,15 @@ hoods.json       docs/hoods.json (committed)  copied from ticket-clock/docs/stre
 - **Weekly** (`weekly.yml`, Mondays): fetch, analyze, check the counts against last week's (a drop of more than 10% stops
   it), publish `docs/data/` as the `la-data` release, deploy Pages. Months already downloaded are kept in the Actions
   cache; a month is downloaded again when it's one of the last two or its copy is over four weeks old.
-- **Lag**: LAPD's reports run about two weeks behind (latest 2026-09-05 on 2026-09-27); calls about a week; CCRS about a
-  week. Each part of the page states its own "through" date.
+- **Dates** (Citina, 2026-09-30): a menu over the map picks the dates the map and the card count: since January 2025,
+  the last 12 months, 90 days or 30 days, or the last full calendar month. Every report, crash and call keeps its day
+  (reports as one number with their half hour and kind, calls in a file per district), and each dataset counts back
+  from its own last day. Neighborhood and district shading follow it (`hood_range`, districts' `r`); the ranks and the
+  summary stay on the whole window. For dates within six months of the last crash report, the card says the crashes
+  are still coming in.
+- **Lag**: LAPD's reports run about two weeks behind (latest 2026-09-18 on 2026-09-30); calls about a week; the state's
+  crash reports have crashes to a day or two ago, but LAPD's reports reach it late (half within 33 days, 85% within 90),
+  so recent months fill in for half a year. Each part of the page states its own dates.
 
 ---
 
@@ -275,6 +282,7 @@ hoods.json       docs/hoods.json (committed)  copied from ticket-clock/docs/stre
   note on why the page starts in 2025. The City totals count every crash off the freeways, placed or not (2,716
   people, 215 killed, 1,003 badly hurt).
 - [ ] **7. Automation** — `weekly.yml`, `pages.yml`, GitHub Pages.
+- [x] **Dates menu** — the date range for the map and the card (Citina, 2026-09-30); see §4.
 - [ ] **8. Sister sites** — add it to the masthead and About cards of the other four pages.
 
 ---

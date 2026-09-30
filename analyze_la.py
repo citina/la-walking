@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""The page's data: data/raw/ (from fetch_la.py) -> docs/data/ (not committed; the weekly workflow will publish it as a
-release asset, as LA Street Rules' is).
+"""The page's data: data/raw/ (from fetch_la.py) -> docs/data/ (not committed; weekly.yml publishes it as the la-data
+release, and pages.yml puts it on the page).
 
 A block is one centerline segment, keyed by its ASSETID: one street from one intersection to the next, or to a dead end.
 Its name is the street and its hundred block, from the segment's house numbers, and it runs between the cross streets at
@@ -15,14 +15,18 @@ the time, and those count with no time of day.
 
 People walking hit are the people walking hurt or killed in the state's crash reports (CCRS), off the freeways. LAPD's
 reports give two streets, not a point, so each crash is placed where they meet and moved along the first street by
-the distance the report gives (or at the house number, when there is one). Calls to police are LAPD's calls for service in four groups by radio code, domestic violence left out, counted per
-reporting district: LAPD gives no place finer than that. The High Injury Network is LADOT's 2024
-network for people walking: a block is on it when most of the block lies along one of its lines.
+the distance the report gives (or at the house number, when there is one). Calls to police are LAPD's calls for service
+in four groups by radio code, domestic violence left out, counted per reporting district: LAPD gives no place finer
+than that. The High Injury Network is LADOT's 2024 network for people walking: a block is on it when most of the block
+lies along one of its lines.
+
+Every report, crash and call keeps its day, counted from its dataset's first, so the page can count any of the date
+ranges (index.json ranges) itself.
 
 The map is split into cells of about 1 km, as on LA Street Rules and SF Streets, so the page only loads the few cells
 it's showing:
-  cells/{x}_{y}.json  one cell: {b: blocks, i: intersections, r: report places, x: crashes}. Positions are zoom-17 pixels from the
-                      cell's corner.
+  cells/{x}_{y}.json  one cell: {b: blocks, i: intersections, r: report places, x: crashes}. Positions are zoom-17
+                      pixels from the cell's corner.
                       block         {id: ASSETID, s: street name, h: hundred block (none without house numbers),
                                      a: the house numbers at the start and the end of its line (none without),
                                      g: lines, x: the cross streets at its two ends, sd: 1 or 2 when it carries only
@@ -30,25 +34,25 @@ it's showing:
                                      High Injury Network}
                       intersection  [x, y, street name, street name, ...]: the streets that meet there, busiest first,
                                      each once (N and S Vermont Ave are one street)
-                      report place  {p: [x, y], k: reports per kind, in daylight, after dark and at no known time in
-                                     turn (the zeros at the end left off), kt: when they happened, per kind, as
-                                     [half hour, count, half hour, count, ...] with the half hours of the day 0-47 in
-                                     daylight and 48-95 after dark; only with any}
-                      crash         [x, y, half hour (0-47 daylight, 48-95 after dark), people walking hurt, main cause
-                                     (its place in index.json's crashes.causes)]
+                      report place  {p: [x, y], e: its reports, each one number (report_code): its day, its half hour
+                                     (0-47 in daylight, 48-95 after dark, 96 not known) and its kind}
+                      crash         [x, y, half hour, people walking hurt, main cause (its place in index.json's
+                                     crashes.causes), day]
   index.json          loads with the page: street names (blocks and intersections refer to them by number), which cells
                       exist, the cell size, the day it was built; the police reports' window, kinds and what was left
-                      out; per neighborhood (hoods.json's order) its km of street and reports of violence and robbery,
-                      drug offenses and car break-ins; the crashes' window, count, causes and how many were placed;
-                      the High Injury Network's share of the streets and of the people walking hit; the calls' window,
-                      groups and the calls per km2 at each percent of the districts (calls.q); the summary (the City as a
-                      whole: people walking hit and reports of violence and robbery month by month from 2025 and by
-                      hour, what the people hit were doing and why, the places visitors go and the intersections with
-                      the most people hit); and for each size of the card's circle, the counts at each
-                      percent of the intersections (circle_q), for the card's ranks
-  districts.json      loads with the first spot or the calls layer: LAPD's reporting districts, each as {d: [district,
-                      km2, outlines (a first point in zoom-17 pixels, then the steps)], q: calls per group in daylight
-                      and after dark in turn, t: when they came in, per group, as a report place's kt}, in three lists
+                      out; the crashes' window, count, causes and how many were placed; the High Injury Network's share
+                      of the streets and of the people walking hit; the calls' window, groups and the calls per km2 at
+                      each percent of the districts (calls.q); the date ranges (each dataset's first and last day in
+                      each) and the last full month; per neighborhood (hoods.json's order) its km of street and reports
+                      of violence and robbery, drug offenses and car break-ins and people walking hit, in all
+                      (hood_stats) and per date range (hood_range); the summary (the City as a whole: people walking hit
+                      and reports of violence and robbery month by month from 2025 and by hour, what the people hit
+                      were doing and why, the places visitors go and the intersections with the most people hit); and
+                      for each size of the card's circle, the counts at each percent of the intersections (circle_q),
+                      for the card's ranks
+  districts.json      loads with the first spot or the calls layer: LAPD's reporting districts, as {d: [district, km2,
+                      outlines (a first point in zoom-17 pixels, then the steps)], r: its calls in each date range}
+  calls/{district}.json  loads for the spot's district: its calls, each one number: (day * 96 + half hour) * 4 + group
   streets.json        loads on the first search: for each street name, first every cell holding one of its blocks (to
                       outline the street), then its hundred blocks, one per place, as [hundred / 100 (-1 without house
                       numbers), cell number, the block nearest its middle (its place in that cell's list)], plus the
@@ -182,6 +186,15 @@ def half_hour(t):
 def pairs(counter):
     """{half hour: count} -> [half hour, count, ...] in order of the half hour."""
     return [v for h in sorted(counter) for v in (h, counter[h])]
+
+
+NO_HH = 96   # a report's half hour when LAPD doesn't know the time
+
+
+def report_code(day, hh, kind):
+    """One police report as one number: its day (from the window's first), its half hour (0-47 in daylight, 48-95
+    after dark, NO_HH not known) and its kind. The page takes it apart the same way."""
+    return (day * (NO_HH + 1) + hh) * len(KINDS) + kind
 
 
 def place_kind(desc):
@@ -421,7 +434,7 @@ premises = collections.defaultdict(collections.Counter)   # place kind -> LAPD p
 seen = set()
 pol_hour = [[0, 0] for _ in range(24)]   # for the summary: violence and robbery, drug offenses, by the hour (known times)
 pol_month = collections.defaultdict(lambda: [0, 0, 0])   # violence and robbery per month: daylight, after dark, no time
-at = collections.defaultdict(lambda: dict(k=[0] * (3 * len(KINDS)), t=collections.defaultdict(collections.Counter)))
+at = collections.defaultdict(lambda: dict(k=[0] * (3 * len(KINDS)), t=collections.defaultdict(collections.Counter), e=[]))
 for r in rows:
     d = date.fromisoformat(r["date_occ"][:10])
     k = kind_of.get(r["nibr_code"])
@@ -462,6 +475,7 @@ for r in rows:
         place["k"][3 * k + 2] += 1
     if k in PEOPLE:
         pol_month[f"{d:%Y-%m}"][dark(t) if ok else 2] += 1
+    place["e"].append(report_code((d - p_start).days, half_hour(t) if ok else NO_HH, k))
 n_police = len(seen)
 n_kind = [sum(p["k"][3 * k] + p["k"][3 * k + 1] + p["k"][3 * k + 2] for p in at.values()) for k in range(len(KINDS))]
 no_time = sum(p["k"][3 * k + 2] for p in at.values() for k in range(len(KINDS)))
@@ -471,8 +485,9 @@ print("  left out: " + ", ".join(f"{n:,} {why}" for why, n in left.most_common()
 for pk in ("home", "other"):
     print(f"  {pk}: " + ", ".join(f"{p} {n:,}" for p, n in premises[pk].most_common(12)))
 
-# the report places into the cells, and what each neighborhood holds
+# the report places into the cells, and what each neighborhood holds (per date range, once they're known)
 hood_rep = [[0, 0, 0] for _ in hoods]   # violence and robbery, drug offenses, car break-ins
+hood_reports = []   # (neighborhood, the reports at a place), for the counts per date range
 points = []   # [x, y, violence and robbery, drug offenses, car break-ins, people walking hit] at any time of day, for the ranks
 for (lat, lon), p in at.items():
     x, y = z17(lon, lat)
@@ -484,15 +499,8 @@ for (lat, lon), p in at.items():
     h = hood_of(x, y)
     if h >= 0:
         hood_rep[h] = [a + b for a, b in zip(hood_rep[h], v)]
-    while k and not k[-1]:
-        k.pop()
-    rec = dict(p=[round(x - cx * CELL), round(y - cy * CELL)], k=k)
-    kt = [pairs(p["t"].get(j, {})) for j in range(len(KINDS))]
-    while kt and not kt[-1]:
-        kt.pop()
-    if kt:
-        rec["kt"] = kt
-    cells[(cx, cy)]["r"].append(rec)
+        hood_reports.append((h, p["e"]))
+    cells[(cx, cy)]["r"].append(dict(p=[round(x - cx * CELL), round(y - cy * CELL)], e=sorted(p["e"])))
 hood_stats = [[round(km, 1), *r] for km, r in zip(hood_km, hood_rep)]
 print(f"  {sum(sum(r) for r in hood_rep):,} of {sum(n_kind):,} reports inside a neighborhood outline")
 
@@ -848,12 +856,15 @@ km_all = sum(math.hypot(ln[i][0] - ln[i - 1][0], ln[i][1] - ln[i - 1][1]) for sg
 km_hin = hin_on_px * PX_M / 1000
 print(f"  on the High Injury Network: {hit_on_hin:,} of {n_hit:,} people walking hit ({hit_on_hin / n_hit:.0%}), on {km_hin / km_all:.1%} of the street length")
 hood_hit = [0] * len(hoods)
+hood_crashes = []   # (neighborhood, day, people walking hit), for the counts per date range
 for x, y, t, n, _, cause, _ in crashes:
     cx, cy = cell_of(x, y)
-    cells[(cx, cy)]["x"].append([round(x - cx * CELL), round(y - cy * CELL), half_hour(t), n, cause])
+    day = (t.date() - c_start).days
+    cells[(cx, cy)]["x"].append([round(x - cx * CELL), round(y - cy * CELL), half_hour(t), n, cause, day])
     h = hood_of(x, y)
     if h >= 0:
         hood_hit[h] += n
+        hood_crashes.append((h, day, n))
 hood_stats = [st + [hh] for st, hh in zip(hood_stats, hood_hit)]   # and people walking hit, last
 
 # ---------- calls to police: LAPD's calls for service, per reporting district ----------
@@ -895,7 +906,7 @@ for f in json.loads((RAW / "districts.json").read_text())["features"]:
 ring_area = lambda r: abs(sum(a[0] * b[1] - b[0] * a[1] for a, b in zip(r, r[1:] + r[:1]))) / 2
 dist_km2 = {d: sum(ring_area(p[0]) - sum(ring_area(h) for h in p[1:]) for p in polys) * PX_M ** 2 / 1e6 for d, polys in dist_geo.items()}
 q_left = collections.Counter()
-q_at = collections.defaultdict(lambda: dict(q=[0] * (2 * len(CALL_GROUPS)), t=collections.defaultdict(collections.Counter)))
+q_at = collections.defaultdict(lambda: dict(q=[0] * (2 * len(CALL_GROUPS)), e=[]))
 for r in call_rows:
     d = date.fromisoformat(r["dispatch_date"][:10])
     if not q_start <= d <= q_end:
@@ -911,7 +922,7 @@ for r in call_rows:
     hh, mm = int(r["dispatch_time"][:2]), int(r["dispatch_time"][3:5])
     t = datetime(d.year, d.month, d.day, hh, mm)
     q_at[rd]["q"][2 * g + dark(t)] += 1
-    q_at[rd]["t"][g][half_hour(t)] += 1
+    q_at[rd]["e"].append(((d - q_start).days * 96 + half_hour(t)) * len(CALL_GROUPS) + g)   # day, half hour, group
 n_calls = sum(sum(v["q"]) for v in q_at.values())
 per_group = [sum(v["q"][2 * g] + v["q"][2 * g + 1] for v in q_at.values()) for g in range(len(CALL_GROUPS))]
 print(f"calls to police {q_start} to {q_end}: {n_calls:,} in {len(q_at):,} of {len(dist_geo):,} reporting districts;",
@@ -951,13 +962,53 @@ def encode(ring):
     return out
 
 
-districts_out = dict(d=[], q=[], t=[])
+districts_out = dict(d=[], r=[])
 for d in sorted(dist_geo):
     rings = [encode(r) for poly in dist_geo[d] for r in poly]
     districts_out["d"].append([d, round(dist_km2[d], 2), *[r for r in rings if len(r) >= 6]])
-    v = q_at.get(d)
-    districts_out["q"].append(v["q"] if v else [])
-    districts_out["t"].append([pairs(v["t"].get(g, {})) for g in range(len(CALL_GROUPS))] if v else [])
+
+# ---------- the page's date ranges: since the window starts, the last 12 months, 90 days and 30 days, and the last
+# full calendar month; each dataset's counted back from its own last day ----------
+m_last = min(p_end, q_end)
+if (m_last + timedelta(days=1)).day != 1:   # the month before, unless the data runs to the end of this one
+    m_last = m_last.replace(day=1) - timedelta(days=1)
+month = (m_last.replace(day=1), m_last)
+
+
+def day_ranges(start, end):
+    """The date ranges for data from start to end: {range: [first day, last day]}, days counted from start."""
+    last = (end - start).days
+    out = {"all": [0, last]}
+    for key, n in (("12m", 365), ("90d", 90), ("30d", 30)):
+        if n <= last + 1:
+            out[key] = [last - n + 1, last]
+    if month[0] >= start and month[1] <= end:
+        out["month"] = [(month[0] - start).days, (month[1] - start).days]
+    return out
+
+
+per_set = dict(police=day_ranges(p_start, p_end), crashes=day_ranges(c_start, c_end), calls=day_ranges(q_start, q_end))
+range_keys = [k for k in ("all", "12m", "90d", "month", "30d") if all(k in v for v in per_set.values())]
+ranges = [dict(k=k, **{ds: v[k] for ds, v in per_set.items()}) for k in range_keys]
+inr = lambda ds, k, day: per_set[ds][k][0] <= day <= per_set[ds][k][1]
+# per neighborhood and range: violence and robbery, drug offenses, car break-ins, people walking hit
+hood_range = {k: [[0, 0, 0, 0] for _ in hoods] for k in range_keys}
+for h, events in hood_reports:
+    for code in events:
+        kind, day = code % len(KINDS), code // len(KINDS) // (NO_HH + 1)
+        j = 0 if kind in PEOPLE else 1 if kind in DRUGS else 2
+        for k in range_keys:
+            if inr("police", k, day):
+                hood_range[k][h][j] += 1
+for h, day, n in hood_crashes:
+    for k in range_keys:
+        if inr("crashes", k, day):
+            hood_range[k][h][3] += n
+# per district and range: its calls, for the layer's shading
+for d in sorted(dist_geo):
+    ev = q_at[d]["e"] if d in q_at else []
+    districts_out["r"].append([sum(inr("calls", k, code // len(CALL_GROUPS) // 96) for code in ev) for k in range_keys])
+print(f"date ranges: {', '.join(range_keys)}; last month {month[0]:%B %Y}")
 
 # ---------- ranks: the card's circle against the same circle around every intersection ----------
 # For each intersection, the report places within the biggest circle, nearest first, with running totals; each smaller
@@ -1088,10 +1139,13 @@ meta = dict(built=str(datetime.now(LA_TZ).date()), cell=CELL, cells=cell_keys, n
             hin=dict(km=round(km_hin), share_km=round(km_hin / km_all, 3), hit=hit_on_hin, share_hit=round(hit_on_hin / n_hit, 3)),
             calls=dict(start=str(q_start), end=str(q_end), n=n_calls, groups=CALL_GROUPS, per_group=per_group, left=dict(q_left),
                        districts=len(dist_geo), q=calls_q),
-            hood_stats=hood_stats, circle_q=circle_q, summary=summary)
+            ranges=ranges, month=f"{month[0]:%Y-%m}", hood_range=hood_range, hood_stats=hood_stats, circle_q=circle_q, summary=summary)
 (OUT / "index.json").write_text(json.dumps(meta, separators=(",", ":")))
 (OUT / "streets.json").write_text(json.dumps(streets, separators=(",", ":")))
 (OUT / "districts.json").write_text(json.dumps(districts_out, separators=(",", ":")))
+(OUT / "calls").mkdir()
+for d, v in q_at.items():
+    (OUT / "calls" / f"{d}.json").write_text(json.dumps(sorted(v["e"]), separators=(",", ":")))
 sizes.sort()
 print(f"{len(cells):,} cells, {sum(sizes) / 2**20:.1f} MB; median {sizes[len(sizes) // 2] / 1024:.0f} KB, largest {sizes[-1] / 1024:.0f} KB;",
       f"index.json {(OUT / 'index.json').stat().st_size / 1024:.0f} KB, streets.json {(OUT / 'streets.json').stat().st_size / 1024:.0f} KB,",
