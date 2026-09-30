@@ -6,8 +6,8 @@ often people walking have been hit by cars there, when and why. It also shows th
 of the streets where people are most often killed or badly hurt.
 
 The sister page to the walking side of [SF Streets](https://citina.github.io/sf-streets/) ([sf-streets](https://github.com/citina/sf-streets)),
-and built the same way as [LA Street Rules](https://citina.github.io/ticket-clock/streets/)
-([ticket-clock](https://github.com/citina/ticket-clock)): one hand-written page, no map library, data split into small
+and built the same way as [LA Street Rules](https://citina.github.io/la-streets/streets/)
+([la-streets](https://github.com/citina/la-streets)): one hand-written page, no map library, data split into small
 map cells, rebuilt weekly. All from public data: LAPD on [data.lacity.org](https://data.lacity.org), California's crash
 reports on [data.ca.gov](https://data.ca.gov), and LADOT's High Injury Network.
 
