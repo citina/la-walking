@@ -62,6 +62,7 @@
   .mast a{color:inherit}
   .mast .site{white-space:nowrap}
   .mast .here{color:var(--ink)}
+  .mast .upd:empty+.dot{display:none}   /* no date until the data loads */
   h1{font-family:"Barlow Condensed","Barlow",system-ui,sans-serif;font-weight:700;font-size:clamp(44px,8vw,66px);
      line-height:.92;margin:20px 0 12px;text-wrap:balance}
   .lede{font-size:18.5px;line-height:1.5;color:var(--ink-2);max-width:var(--measure);margin:0}
@@ -78,11 +79,6 @@
   .note p{margin:0 0 6px;max-width:none}
   .note a{color:inherit}
   .note.end{margin-top:40px;max-width:none}
-  .note.end summary{cursor:pointer;list-style:none;width:max-content;font-weight:600;color:var(--ink)}
-  .note.end summary::-webkit-details-marker{display:none}
-  .note.end summary::after{content:" +";color:var(--ink-2);font-weight:400}
-  .note.end details[open] summary{margin-bottom:6px}
-  .note.end details[open] summary::after{content:" −"}
   /* about this page, with the sister sites */
   .about{margin:12px 0 0;font-size:16px;line-height:1.5;color:var(--ink-2)}
   .sibs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin:16px 0 0}
@@ -129,8 +125,12 @@
   @media (max-width:560px){
     main{padding-top:16px}
     h1{margin:14px 0 8px}
-    .mast{flex-wrap:nowrap;align-items:flex-start}   /* "About" stays top right while the site names wrap */
-    .mast .upd{display:none}
+    /* "About" stays top right while the site names wrap, and the date gets its own line under them */
+    .mast{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:start}
+    .mast .end{display:contents}
+    .mast .end a{grid-area:1/2}
+    .mast .upd{grid-area:2/1}
+    .mast .upd:empty,.mast .dot{display:none}
     .locbtn{padding:0 10px;gap:6px}
     .findbar{column-gap:8px}
     .locbtn .lbl{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
@@ -337,7 +337,7 @@
 
 <body>
 <main>
-  <nav class="mast" aria-label="Sister sites"><span><a class="site" href="https://citina.github.io/curb-log/">Curb Log</a> · <a class="site" href="https://citina.github.io/la-streets/">USC Ticket Clock</a> · <a class="site" href="https://citina.github.io/la-streets/streets/">LA Street Rules</a> · <a class="site" href="https://citina.github.io/sf-streets/">SF Streets</a> · <span class="site here" aria-current="page">LA Walking</span></span><span><span class="upd" id="upd"></span><a href="#about">About</a></span></nav>
+  <nav class="mast" aria-label="Sister sites"><span><a class="site" href="https://citina.github.io/curb-log/">Curb Log</a> · <a class="site" href="https://citina.github.io/la-streets/">USC Ticket Clock</a> · <a class="site" href="https://citina.github.io/la-streets/streets/">LA Street Rules</a> · <a class="site" href="https://citina.github.io/sf-streets/">SF Streets</a> · <span class="site here" aria-current="page">LA Walking</span></span><span class="end"><span class="upd" id="upd"></span><span class="dot"> · </span><a href="#about">About</a></span></nav>
 
   <div class="intro">
     <h1>LA Walking</h1>
@@ -487,7 +487,7 @@
 
   <section id="about">
     <div class="code"><b>About</b> This page</div>
-    <p class="about">Made by Citina Liang, built with Claude Code. Connect with me on <a href="https://www.linkedin.com/in/citina/">LinkedIn</a>, see the code and star it on <a href="https://github.com/citina/la-walking">GitHub</a>, or email me at <a href="mailto:citina.liang@gmail.com">citina.liang@gmail.com</a>. See more sister pages below.</p>
+    <p class="about">Made by Citina Liang with Claude Code in less than a week. The page updates itself weekly. All sources are from official public data. <a href="https://www.linkedin.com/in/citina/">LinkedIn</a> · <a href="https://github.com/citina/la-walking">GitHub</a> · <a href="mailto:citina.liang@gmail.com">citina.liang@gmail.com</a></p>
     <div class="sibs">
       <a class="sib" href="https://citina.github.io/la-streets/streets/"><div class="sib-name">LA Street Rules</div><div class="sib-txt">Every block in the City of Los Angeles: its sweeping schedule, its meters, and what gets ticketed there.</div></a>
       <a class="sib" href="https://citina.github.io/sf-streets/"><div class="sib-name">SF Streets</div><div class="sib-txt">San Francisco block by block: whether you can park there and for how long, and, on foot, what gets reported to police and how often people walking are hit nearby.</div></a>
@@ -498,9 +498,7 @@
 
   <div class="note end">
     <p><b>Not 100% accurate, and not a promise of safety.</b> Built automatically from LAPD's and the state's open data, which miss what isn't reported and can run late. Past reports and crashes don't predict the next one. The explanations are this page's own reading of the data, and we reserve the right to explain it as we see fit.</p>
-    <details><summary>More</summary>
     <p><b>What the page loads.</b> The map images come from OpenStreetMap and the street data from this site, which GitHub hosts, one small area at a time, so both can tell roughly which part of the city you're looking at. If you use your location, it moves the map and sets the spot the card counts around; the exact spot isn't sent anywhere or put in the page's link.</p>
-    </details>
   </div>
 </main>
 <div id="tip" hidden></div>
@@ -1317,7 +1315,7 @@ fitLA();
 fetch('data/index.json').then(r=>{ if(!r.ok) throw new Error(r.status); return r.json(); }).then(m=>{
   META=m;
   const bd=new Date(m.built+'T12:00:00');
-  if(!isNaN(bd)) $('#upd').textContent=`Updated ${bd.toLocaleDateString('en-US',{month:'short',day:'numeric',...(bd.getFullYear()!==new Date().getFullYear()?{year:'numeric'}:{})})} · `;
+  if(!isNaN(bd)) $('#upd').textContent=`Updated ${bd.toLocaleDateString('en-US',{month:'short',day:'numeric',...(bd.getFullYear()!==new Date().getFullYear()?{year:'numeric'}:{})})}`;
   $('#mPol').textContent=` This page has ${num(m.police.n)} reports, from ${fmtD(m.police.start)} to ${fmtD(m.police.end)}; it's rebuilt every week.`;
   $('#mCalls').textContent=` This page has ${num(m.calls.n)} calls, from ${fmtD(m.calls.start)} to ${fmtD(m.calls.end)}, in ${num(m.calls.districts)} districts.`;
   const C=m.crashes, H=m.hin;
