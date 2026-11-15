@@ -22,6 +22,8 @@
     /* the walking map, as on SF Streets: blocks recede, and each layer has its own color */
     --walk-line:#d3ccbf; --people:#9884cc; --drugs:#0b8a7f; --cars:#c07a12; --calls:#2a6fb8; --hit:#2b2622;
     --walk:#d4502a; --walk-soft:#f2b8a2; --people-soft:#cdc3ea;
+    /* people walking hit off the map (the card's chart): dark on a light card, light on a dark one */
+    --hit-ink:var(--hit);
   }
   @media (prefers-color-scheme: dark){
     :root:not([data-theme="light"]){
@@ -33,6 +35,7 @@
       --panel:#262625; --panel-ink:#ffffff;
       --sign-red:#b50e29;
       --walk:#e0643e; --walk-soft:#8a4029;
+      --hit-ink:#d9d2c8;
     }
   }
   :root[data-theme="dark"]{
@@ -44,6 +47,7 @@
     --panel:#262625; --panel-ink:#ffffff;
     --sign-red:#b50e29;
     --walk:#e0643e; --walk-soft:#8a4029;
+    --hit-ink:#d9d2c8;
   }
 
   *{box-sizing:border-box}
@@ -100,6 +104,7 @@
                 font:500 14px "Barlow",system-ui,sans-serif;min-height:30px;padding:3px 28px 3px 10px;
                 background:var(--surface) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%23898781' stroke-width='1.5'/%3E%3C/svg%3E") no-repeat right 10px center}
   .dates select:hover{border-color:var(--ink-3)}
+  @media (max-width:1000px),(pointer:coarse){ .dates select{font-size:16px} }   /* iPhones zoom in on a smaller one when it's tapped */
   .chip[aria-pressed="true"]{background:var(--ink);color:var(--plane);border-color:var(--ink)}
   .chip.sm{font-size:14px;padding:3px 10px;min-height:30px}
   /* a layer still to come: dashed and unfilled rather than faded, so its name stays readable */
@@ -121,7 +126,7 @@
   .locbtn svg{width:16px;height:16px;flex:none}
   .locbtn .short{display:none}
   /* a phone: less above the map, so it starts on the first screen. The location button is its icon and "Near me", beside
-     the search box (its full name stays for screen readers) */
+     the search box (its full name stays for screen readers), and the layers are one row that scrolls sideways */
   @media (max-width:560px){
     main{padding-top:16px}
     h1{margin:14px 0 8px}
@@ -136,6 +141,10 @@
     .locbtn .lbl{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
     .locbtn .short{display:inline}
     .findbar .searchbox{flex:1 1 0;min-width:0}
+    .chips.layers{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;margin-left:-16px;margin-right:-16px;padding:0 16px}
+    .chips.layers::-webkit-scrollbar{display:none}
+    .chips.layers>*{flex:none}
+    .chips.layers::after{content:"";flex:0 0 6px}
   }
   .searchbox{position:relative;flex:1 1 260px;max-width:420px}
   .searchbox>svg{position:absolute;left:11px;top:12px;width:16px;height:16px;color:var(--ink-2);pointer-events:none}
@@ -764,13 +773,19 @@ function showMap(){ if(!stacked()) return; const r=wrap.getBoundingClientRect();
   if(r.top<0||r.bottom>innerHeight) wrap.scrollIntoView({block:r.height>innerHeight?'start':'nearest',behavior:still()?'auto':'smooth'}); }
 // tapping on a phone scrolls to the card; a spot found by search or a link (scroll false) doesn't
 function toCard(){ if(!stacked()) return; const p=$('#panel'); if(p.getBoundingClientRect().top>innerHeight-160) p.scrollIntoView({block:'start',behavior:still()?'auto':'smooth'}); }
+// beside the map: a spot picked while scrolled down a long card left the new card's top above the screen, and a shorter
+// card pulled the stuck map up and away with it; scroll back to the new card's title instead, which leaves the map where
+// stick() keeps it (as on LA Street Rules)
+function cardTop(){ if(stacked()) return; const st=parseFloat($('.mapcol').style.top), t=$('.explorer').getBoundingClientRect().top-(isFinite(st)?st:12);
+  if(t<0) scrollBy(0,t); }
 
 /* ============ the spot and its circle ============ */
-// a spot, from a tap, search, your location or a link: the middle of the card's circle
+// a spot, from a tap, search, your location, a link or the summary (o.sum, which scrolls up to the map itself): the
+// middle of the card's circle
 function setSpot(x, y, o, scroll=true){
   if(answerOn&&!o.fromSearch) msg('');
   spot={x,y,...o};
-  renderSpot(); legend(); setHash(); if(scroll) toCard();
+  renderSpot(); legend(); setHash(); if(scroll) toCard(); if(!o.sum) cardTop();
 }
 // the place in the link
 function goHash(){ const h=decodeURIComponent(location.hash.slice(1)); if(h[0]!=='@'||!META) return;
@@ -957,7 +972,7 @@ async function fillWalk(){
   let hc=`<div class="glance"><div><span class="v">${num(nHit)}</span> <span class="k">${nHit===1?'person':'people'} walking hit ${cyrs}</span></div></div>${nHit?rank('hit',nHit,'people walking hit'):''}`;
   if(nHit){
     const byH=new Array(24).fill(0); hits.forEach(x=>{ byH[Math.floor(x.t%48/2)]+=x.n; });
-    hc+=hourChart('What time of day they were hit',byH.map(n=>[[n,'var(--hit)']]),'People walking hit by the hour');
+    hc+=hourChart('What time of day they were hit',byH.map(n=>[[n,'var(--hit-ink)']]),'People walking hit by the hour');
     if(walkWhen==='any'){ const dk=hits.reduce((s,x)=>s+(x.t>=48?x.n:0),0); hc+=`<div class="sm-note">${num(dk)} of ${num(nHit)} after dark.</div>`; }
     const why={}; hits.forEach(x=>{ why[x.c]=(why[x.c]||0)+x.n; });
     hc+=`<div class="sm-note" style="margin-top:12px">Main cause in the crash report:</div><table class="ktab">${Object.entries(why).sort((a,c)=>c[1]-a[1]).slice(0,3)
@@ -995,8 +1010,11 @@ async function fillWalk(){
   kindRows($('#pRows'),pRows,{title:`What time of day they happened${whenTxt()}`,one:'report',many:'reports',when:'it happened',where:within});
   if(qRows.length) kindRows($('#qRows'),qRows,{title:`What time of day the calls came in${whenTxt()}`,one:'call',many:'calls',when:'it came in',where:'in this district'});
   drawDistSel();
-  // after a search or "Near me" on a phone, the short answer above the map, with a link down to the card
-  if((spot.fromSearch||spot.you)&&stacked()){ msg(`<b>${esc(spot.name||spot.title)}</b>: ${pAll?num(pAll):'no'} police report${pAll===1?'':'s'} and ${nHit?num(nHit):'no'} ${nHit===1?'person':'people'} walking hit within ${m} m ${yrs} · <a href="#panel">See the card ↓</a>`); answerOn=true; }
+  // after a search, "Near me" or a place in the summary on a phone, the short answer above the map, with a link down to
+  // the card. It comes in after a place's scroll up to the map has started and pushes the map down, so that scroll is
+  // made again, once.
+  if((spot.fromSearch||spot.you||spot.sum==='place')&&stacked()){ msg(`<b>${esc(spot.name||spot.title)}</b>: ${pAll?num(pAll):'no'} police report${pAll===1?'':'s'} and ${nHit?num(nHit):'no'} ${nHit===1?'person':'people'} walking hit within ${m} m ${yrs} · <a href="#panel">See the card ↓</a>`); answerOn=true;
+    if(spot.sum&&!spot.told){ spot.told=true; toMapView(); } }
 }
 
 /* ============ neighborhoods (hoods.json, the LA Times' boundaries, from LA Street Rules): picked on the map while the
@@ -1259,7 +1277,7 @@ function buildSummary(){
   Z.corners.forEach(([name,x,y,hit],i)=>{ const li=H('li',{},rc); li.dataset.n=i+1; const b=H('button',{className:'plink',textContent:name},li);
     H('span',{className:'v',textContent:`${hit} hit`},li);
     b.onclick=()=>{ clearStreet(); $('#cands').innerHTML=''; pickHood(-1); const px=x-O[0], py=y-O[1];
-      jumpTo(px,py,spotView()); setSpot(px,py,{name},false);
+      jumpTo(px,py,spotView()); setSpot(px,py,{name,sum:'corner'},false);
       msg(`<b>${esc(name)}</b>: ${hit} people walking were hit at this intersection ${sinceTxt(C)}. The card shows what's within ${M()} m.`); toMapView(); }; });
 
   // how: what they were doing, and the causes
@@ -1284,9 +1302,12 @@ $('#pMore').onclick=()=>{ placeAll=!placeAll; renderPlaces(); };
 // a place from the table: the map centers on it and the card shows its circle
 function goPlace(p){ const [name,x,y]=p, px=x-O[0], py=y-O[1];
   $('#cands').innerHTML=''; clearStreet(); pickHood(-1); msg('');
-  jumpTo(px,py,spotView()); setSpot(px,py,{name},false); toMapView(); }
-// from the summary back up to the map, with the message above it in view
-function toMapView(){ $('.mapcol').scrollIntoView({block:'start',behavior:still()?'auto':'smooth'}); }
+  jumpTo(px,py,spotView()); setSpot(px,py,{name,sum:'place'},false); toMapView(); }
+// from the summary back up to the map, with the message above it in view: beside the card, the top of the map column; on
+// a phone, the whole map with its bottom at the bottom of the screen, and the message above it where there's room
+function toMapView(){ const behavior=still()?'auto':'smooth';
+  if(!stacked()) return $('.mapcol').scrollIntoView({block:'start',behavior});
+  wrap.scrollIntoView({block:wrap.offsetHeight>innerHeight?'start':'end',behavior}); }
 
 /* ============ start ============ */
 fitLA();
