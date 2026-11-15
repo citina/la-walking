@@ -509,7 +509,7 @@
 
   <div class="note end">
     <p><b>Not 100% accurate, and not a promise of safety.</b> Built automatically from LAPD's and the state's open data, which miss what isn't reported and can run late. Past reports and crashes don't predict the next one. The explanations are this page's own reading of the data, and we reserve the right to explain it as we see fit.</p>
-    <p><b>What the page loads.</b> The map images come from OpenStreetMap and the street data from this site, which GitHub hosts, one small area at a time, so both can tell roughly which part of the city you're looking at. If you use your location, it moves the map and sets the spot the card counts around; the exact spot isn't sent anywhere or put in the page's link.</p>
+    <p><b>What the page loads.</b> The map images come from OpenStreetMap and the street data from this site, which GitHub hosts, one small area at a time, so both can tell roughly which part of the city you're looking at. If you use your location, it moves the map and sets the spot the card counts around; the exact spot isn't sent anywhere or put in the page's link. On a phone, the page also uses the phone's compass to point an arrow the way you're facing; that isn't sent anywhere either.</p>
   </div>
 </main>
 <div id="tip" hidden></div>
@@ -862,10 +862,17 @@ function blockDist(b, x, y){ let d=Infinity;
     t=L?Math.max(0,Math.min(1,((x-ax)*dx+(y-ay)*dy)/L)):0; d=Math.min(d,Math.hypot(ax+t*dx-x,ay+t*dy-y)); } });
   return d; }
 
-// your location: red, so it doesn't get lost among the lines
-function drawYou(){ gYou.innerHTML=''; if(!fix) return; const u=vb.w/(wrap.clientWidth||600);
+// your location: red, so it doesn't get lost among the lines. Once a phone's compass gives the way you're facing
+// (facing, in degrees from north; see "which way you're facing" below), the dot becomes an arrow pointing that way
+let facing=null, youArrow=null;
+function drawYou(){ gYou.innerHTML=''; youArrow=null; if(!fix) return; const u=vb.w/(wrap.clientWidth||600);
   S('circle',{cx:fix[0],cy:fix[1],r:16*u,fill:'var(--map-you)','fill-opacity':.18,stroke:'var(--map-you)','stroke-opacity':.45,'stroke-width':1,'vector-effect':'non-scaling-stroke'},gYou);
-  S('circle',{cx:fix[0],cy:fix[1],r:7*u,fill:'var(--map-you)',stroke:'#fff','stroke-width':3,'vector-effect':'non-scaling-stroke'},gYou); }
+  if(facing===null) S('circle',{cx:fix[0],cy:fix[1],r:7*u,fill:'var(--map-you)',stroke:'#fff','stroke-width':3,'vector-effect':'non-scaling-stroke'},gYou);
+  else{ youArrow=S('path',{d:ARROW,fill:'var(--map-you)',stroke:'#fff','stroke-width':5,'paint-order':'stroke','stroke-linejoin':'round','vector-effect':'non-scaling-stroke'},gYou); turnYou(); } }
+// the arrow, in screen pixels around your location, drawn pointing north; it's turned the way you're facing, and with
+// the map when the map turns (it sits in gRot)
+const ARROW='M0,-11L8.5,10L0,5L-8.5,10Z';
+const turnYou=()=>{ if(youArrow) youArrow.setAttribute('transform',`translate(${fix[0]} ${fix[1]}) rotate(${facing}) scale(${vb.w/(wrap.clientWidth||600)})`); };
 // after a search on a phone, bring the map into view if it's off screen
 function showMap(){ if(!stacked()) return; const r=wrap.getBoundingClientRect();
   if(r.top<0||r.bottom>innerHeight) wrap.scrollIntoView({block:r.height>innerHeight?'start':'nearest',behavior:still()?'auto':'smooth'}); }
@@ -1398,6 +1405,7 @@ $('#locBtn').addEventListener('click',()=>{
   const btn=$('#locBtn');
   if(!navigator.geolocation||!window.isSecureContext){ msg('This browser can\'t share a location with the page. Search for your street instead.'); return; }
   btn.disabled=true; msg('Finding your location… The card will count what\'s around it, in your browser. The page doesn\'t send or save your location.'); $('#cands').innerHTML=''; q.value=''; clearStreet();
+  if(matchMedia('(pointer:coarse)').matches) startFacing();   // on a phone; an iPhone only asks for the compass straight after a tap
   navigator.geolocation.getCurrentPosition(pos=>{
     btn.disabled=false; const {latitude:lat, longitude:lon}=pos.coords;
     if(lat<LA[1]||lat>LA[3]||lon<LA[0]||lon>LA[2]){ fix=null; drawYou(); legend();
@@ -1416,6 +1424,34 @@ $('#locBtn').addEventListener('click',()=>{
       :err.code===3?'Finding your location took too long. Try again, or search for your street.':'Couldn\'t get your location. Try again, or search for your street.');
     if(err.code===1) q.focus(); }, {enableHighAccuracy:false, timeout:15000, maximumAge:60000});
 });
+
+/* ============ which way you're facing: a phone's compass, read in the browser to turn the arrow on your location ============ */
+// An iPhone gives the compass heading of the top of the phone, once it's allowed to. Android gives how the phone is turned
+// from north (alpha, then beta and gamma for its tilt), worked out here into where the top of the screen points, or the
+// back of the phone as it's held more upright. Both go by magnetic north, about 11° east of true north in Los Angeles
+// (11.4° at 34.05 N, 118.25 W at the start of 2026 and 11.3° by its end, by the World Magnetic Model, WMM2025; it shrinks
+// about 0.08° a year).
+let faceAsked=false, faceV=null, faceRaf=0;
+function startFacing(){ if(faceAsked||!window.DeviceOrientationEvent) return; faceAsked=true;
+  const on=()=>{ addEventListener('deviceorientationabsolute',onFace); addEventListener('deviceorientation',onFace); };
+  if(typeof DeviceOrientationEvent.requestPermission==='function') DeviceOrientationEvent.requestPermission().then(r=>{ if(r==='granted') on(); else faceAsked=false; },()=>{ faceAsked=false; });
+  else on(); }
+// the way one reading says the phone faces, in radians clockwise from magnetic north, or null if it doesn't say;
+// t: how far the screen is turned sideways, counterclockwise, in radians
+function faceOf(e, t){ const r=Math.PI/180;
+  if(typeof e.webkitCompassHeading==='number'&&e.webkitCompassHeading>=0) return e.webkitCompassHeading*r+t;
+  if(!e.absolute||e.alpha==null||e.beta==null||e.gamma==null) return null;
+  const cA=Math.cos(e.alpha*r), sA=Math.sin(e.alpha*r), cB=Math.cos(e.beta*r), sB=Math.sin(e.beta*r), cG=Math.cos(e.gamma*r), sG=Math.sin(e.gamma*r), sT=Math.sin(t), cT=Math.cos(t);
+  // east and north of the top of the screen (u) and of the back of the phone (k); each counts as much as it lies flat
+  const ue=sT*(cA*cG-sA*sB*sG)-cT*sA*cB, un=sT*(sA*cG+cA*sB*sG)+cT*cA*cB, ke=-cA*sG-sA*sB*cG, kn=cA*sB*cG-sA*sG, wu=Math.hypot(ue,un), wk=Math.hypot(ke,kn);
+  return wu||wk?Math.atan2(ue*wu+ke*wk,un*wu+kn*wk):null; }
+// t from window.orientation first, as iPhones count screen.orientation's angle the other way round from Android
+function onFace(e){ const r=Math.PI/180, h=faceOf(e,(window.orientation??(screen.orientation&&screen.orientation.angle)??0)*r);
+  if(h===null) return;
+  // to true north; smoothed, so the arrow doesn't shake, and drawn once a frame at most
+  const x=Math.sin(h+11*r), y=Math.cos(h+11*r); faceV=faceV?[faceV[0]+(x-faceV[0])*.25,faceV[1]+(y-faceV[1])*.25]:[x,y];
+  if(!faceRaf) faceRaf=requestAnimationFrame(()=>{ faceRaf=0; const first=facing===null; facing=(Math.atan2(faceV[0],faceV[1])/r+360)%360;
+    if(first){ drawYou(); legend(); } else turnYou(); }); }
 
 /* ============ legend: what the map itself shows right now ============ */
 let legendKey='';
