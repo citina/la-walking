@@ -1083,14 +1083,16 @@ print(f"  ranks: at 200 m, half the intersections have {circle_q[200]['people'][
 ranked = [sorted(c[j] for c in circ_place) for j in range(4)]
 rank_of = lambda j, v: 100 * bisect.bisect_left(ranked[j], v) // len(circ_place)
 places = []
+# counted from the rounded points the page has (the place's and the cells'), so the table matches the card that tapping
+# the place opens: exact points put a report place half a pixel across the edge at Hollywood & Vine (186 against 212)
 for name, lat, lon in PLACES:
-    x, y = z17(lon, lat)
+    x, y = map(round, z17(lon, lat))
     r2 = (PLACE_M / PX_M) ** 2
     v = [0, 0, 0, 0]
     for i in range(int(x // R) - 1, int(x // R) + 2):
         for j in range(int(y // R) - 1, int(y // R) + 2):
             for px, py, *w in grid.get((i, j), ()):
-                if (px - x) ** 2 + (py - y) ** 2 <= r2:
+                if (round(px) - x) ** 2 + (round(py) - y) ** 2 <= r2:
                     v = [a + b for a, b in zip(v, w)]
     near_corner = min(corners, key=lambda n: (node_at[n][0] - x) ** 2 + (node_at[n][1] - y) ** 2)
     places.append([name, round(x), round(y), v[3], v[0], v[1], rank_of(3, v[3]), rank_of(0, v[0]), rank_of(1, v[1]), v[2], rank_of(2, v[2])])

@@ -12,7 +12,7 @@
 <meta property="og:image" content="https://citina.github.io/la-walking/og.png">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
-<meta property="og:image:alt" content="A map of Los Angeles streets with dots for police reports around a spot">
+<meta property="og:image:alt" content="The LA Walking page: its search box and a gray map of Los Angeles with dots for police reports and people walking hit">
 <meta name="twitter:card" content="summary_large_image">
 <!-- the browser's bar in the page's background color (--plane), and the tab's icon: the map's dashed circle around a spot,
      in the walking color (--walk) -->
@@ -541,7 +541,7 @@ const msg=html=>{ answerOn=false; $('#findMsg').innerHTML=html; };
 let spot=null;
 // with no spot picked (or your location as the spot) the link stays bare: there's no card to share, and the map's view
 // isn't in the link either
-function setHash(){ try{ if(spot&&!spot.you){ const [lat,lon]=toLatLon(spot.x,spot.y); history.replaceState(null,'',`#@${lat.toFixed(5)},${lon.toFixed(5)}/${radius}m${range!=='all'?'/'+range:''}${walkWhen!=='any'?'/'+walkWhen:''}`); }
+function setHash(){ if(!META) return; try{ if(spot&&!spot.you){ const [lat,lon]=toLatLon(spot.x,spot.y); history.replaceState(null,'',`#@${lat.toFixed(5)},${lon.toFixed(5)}/${radius}m${range!=='all'?'/'+range:''}${walkWhen!=='any'?'/'+walkWhen:''}`); }
   else if(location.hash) history.replaceState(null,'',location.pathname+location.search); }catch(e){} }
 addEventListener('hashchange',()=>goHash());
 // other dates or another time of day change the link too: these run after the menu's and the chips' own listeners have
@@ -777,8 +777,11 @@ function loadDistricts(){
 // a district's calls on the dates and at the time of day picked
 const distN=dd=>{ const ri=Math.max(0,META.ranges.findIndex(r=>r.k===range)), n=dd.r[ri]||0, dk=dd.k[ri]||0; return walkWhen==='any'?n:walkWhen==='dark'?dk:n-dk; };
 // zoomed in, a ring per district at its point, under the other dots
+// calls' rings are tinted inside (CALL_IN), more the bigger the ring, so a busy district reads at a glance and the rings
+// still differ from car break-ins' white-centered ones
+const CALL_IN='color-mix(in oklab,var(--calls) 22%,var(--map-bg))';
 function drawCalls(){ gCalls.innerHTML=''; if(!DIST||!META) return; const qs=DIST.filter(dd=>dd.pt).map(dd=>[dd.pt[0],dd.pt[1],distN(dd)]);
-  dots(gCalls,qs,'var(--calls)','round',SIZE.calls); dots(gCalls,qs,'var(--map-bg)','round',SIZE.calls,5); }
+  dots(gCalls,qs,'var(--calls)','round',SIZE.calls); dots(gCalls,qs,CALL_IN,'round',SIZE.calls,5); }
 // a mouse over a ring: its district's calls (the smallest ring there, as it's drawn on top)
 let ringTip=false;
 svg.addEventListener('pointermove',e=>{ if(e.pointerType!=='mouse') return; let best=null;
@@ -800,13 +803,13 @@ function drawDistSel(){ gDistSel.innerHTML=''; const dd=spot&&spot.dist;
 
 /* ============ zoomed out: each layer's dots add up squares of the map (grid.json, analyze_la.py), loaded while the map is
    zoomed out. Data built before 2026-11-15 has none (index.json has no grid), so until it's rebuilt there are no dots ============ */
-let GRID=null, gridReq=null;
+let GRID=null, gridReq=null, gridFail=0;
 // per layer, the squares of GRID.g zoom-17 pixels (about 250 m) with any in them: each its place, as steps (x from the
 // square before; y down from it in the same column, or from the top in a new one), then per date range its counts in
 // daylight, after dark and (police reports only) with no time known. Kept as [x, y (in squares from the world's corner), row]
-function loadGrid(){ return gridReq||(gridReq=fetch('data/grid.json').then(r=>{ if(!r.ok) throw new Error(r.status); return r.json(); }).then(g=>{
+function loadGrid(){ if(!gridReq&&Date.now()-gridFail<10000) return Promise.resolve(); return gridReq||(gridReq=fetch('data/grid.json').then(r=>{ if(!r.ok) throw new Error(r.status); return r.json(); }).then(g=>{
   WIDE.forEach(([L])=>{ let x=0, y=0; g[L]=(g[L]||[]).map(r=>{ if(r[0]){ x+=r[0]; y=r[1]; } else y+=r[1]; return [g.o[0]+x,g.o[1]+y,r]; }); });
-  GRID=g; wideKey=''; legendKey=''; drawWide(); legend(); }).catch(e=>console.warn('no squares for the zoomed-out map:',e))); }
+  GRID=g; wideKey=''; legendKey=''; drawWide(); legend(); }).catch(e=>{ gridReq=null; if(!gridFail) msg('Couldn\'t load the dots for the zoomed-out map. Check the connection and move the map to try again.'); gridFail=Date.now(); console.warn('no squares for the zoomed-out map:',e); })); }
 // the layers, bottom to top where two dots are the same size: [layer, color, cap, a ring]
 const WIDE=[['calls','var(--calls)','round',1],['cars','var(--cars)','round',1],['drugs','var(--drugs)','square'],['people','var(--people)','round'],['hit','var(--hit)','round']];
 // a base square's count on the dates (ri, its place in GRID.ranges) and at the time of day picked; w: counts per range
@@ -839,7 +842,7 @@ function drawWide(on=vb.w*PX_M<=SHOW_M){
   const inBox=([x,y])=>x>=wideBox[0]&&x<=wideBox[2]&&y>=wideBox[1]&&y<=wideBox[3];
   WIDE.forEach(([L,color,cap,ring])=>{ if(!layers[L]||!GRID[L]) return; const list=squares(L,k,ri,walkWhen).filter(inBox), size=[wideTop(L,k),SIZE[L][1]];
     if(L==='hit') dots(gWide,list,'var(--map-bg)','round',size,-3,D);
-    dots(gWide,list,color,cap,size,0,D,L==='hit'?3:0); if(ring) dots(gWide,list,'var(--map-bg)','round',size,5,D); });
+    dots(gWide,list,color,cap,size,0,D,L==='hit'?3:0); if(ring) dots(gWide,list,L==='calls'?CALL_IN:'var(--map-bg)','round',size,5,D); });
   // biggest first (a dot with its light edge or its hole as one), so a smaller dot of another layer in the same square
   // sits on top of a bigger one
   [...gWide.children].sort((a,b)=>b.dataset.d-a.dataset.d).forEach(e=>gWide.appendChild(e)); }
@@ -899,7 +902,7 @@ function goHash(){ let h=''; try{ h=decodeURIComponent(location.hash.slice(1)); 
   const [lat,lon]=p.split(',').map(Number); if(!isFinite(lat)||!isFinite(lon)||lat<LA[1]||lat>LA[3]||lon<LA[0]||lon>LA[2]) return;
   const k=more.find(v=>[...$('#dates').options].some(o=>o.value===v))||'all', w=more.find(v=>v==='day'||v==='dark')||'any';
   if(k!==range){ $('#dates').value=k; setRange(k); } if(w!==walkWhen) $(`.chips[data-group="when"] .chip[data-v="${w}"]`).click();
-  const [x,y]=toXY(lat,lon); if(spot&&Math.hypot(spot.x-x,spot.y-y)<2) return;
+  const [x,y]=toXY(lat,lon); if(spot&&Math.hypot(spot.x-x,spot.y-y)<2){ setHash(); return; }
   pickHood(-1); jumpTo(x,y,spotView()); setSpot(x,y,{},false); }
 // the circle: 100 to 500 m (the slider), 200 m to start; remembered on this device, or set by a link
 const okRadius=r=>r>=100&&r<=500&&r%50===0;
@@ -1154,7 +1157,7 @@ function pickHood(i){ if(HOODS) HOODS.forEach((h,k)=>h.el.classList.toggle('on',
 // the dates picked, for its tooltip
 const hoodStat=i=>{ const s=META&&META.hood_stats&&META.hood_stats[i], r=META&&META.hood_range&&META.hood_range[range]; return s&&r?[s[0],...r[i]]:s; };
 function hoodTip(i){ const s=hoodStat(i);
-  return `<b>${esc(HOODS[i].name)}</b>`+(s?`<br>${num(s[1])} police reports of violence or robbery (${(s[1]/Math.max(s[0],.1)).toFixed(1)} per km of street), ${num(s[2])} of drug offenses, ${num(s[3])} car break-ins, ${rangeTxt('police')}; ${num(s[4]||0)} people walking hit ${rangeTxt('crashes')}`:''); }
+  return `<b>${esc(HOODS[i].name)}</b>`+(s?`<br>${num(s[1])} police reports of violence or robbery (${(s[1]/Math.max(s[0],.1)).toFixed(1)} per km of street), ${num(s[2])} of drug offenses, ${num(s[3])} car break-ins, ${rangeTxt('police')}${walkWhen==='any'?'':', at any time of day'}; ${num(s[4]||0)} people walking hit ${rangeTxt('crashes')}${walkWhen==='any'?'':', at any time of day'}`:''); }
 // fit the neighborhood, but no wider than the view the streets show at. A bigger one centers on where its streets are
 // (the data cell nearest the middle of its cells) rather than the middle of its box, which can be hills or a park.
 // Returns whether all of it fits.
@@ -1174,8 +1177,8 @@ function goHood(i){
    place from the summary ============ */
 const q=$('#q'), sugg=$('#sugg');
 let loadingStreets=null, active=-1, options=[];
-let sugN=0, sugWait=null;   // the latest suggestions (an older or closed list's late results are dropped), and when they're done
-const ABBR={avenue:'ave',av:'ave',street:'st',boulevard:'blvd',bl:'blvd',drive:'dr',place:'pl',road:'rd',lane:'ln',court:'ct',terrace:'ter',highway:'hwy',north:'n',south:'s',east:'e',west:'w'};
+let sugN=0, sugWait=null, enterN=0;   // the latest suggestions (an older or closed list's late results are dropped), and when they're done
+const ABBR={avenue:'ave',av:'ave',street:'st',boulevard:'blvd',bl:'blvd',drive:'dr',place:'pl',road:'rd',lane:'ln',court:'ct',terrace:'ter',highway:'hwy',north:'n',south:'s',east:'e',west:'w',mt:'mount'};
 const words=s=>s.toLowerCase().replace(/['’]/g,'').replace(/[.,#()\/&-]/g,' ').split(/\s+/).filter(Boolean).map(w=>ABBR[w]||w);
 // every word typed starts a word of the name; typed words run together also count ("mc clintock" finds McClintock)
 const matches=(qw, nw)=>qw.every(w=>nw.some(x=>x.startsWith(w)))||qw.length>1&&nw.some(x=>x.startsWith(qw.join('')));
@@ -1200,12 +1203,26 @@ function findNames(text, num){
 const isStreet=t=>{ if(!META||!STREETS) return false; const {num,text}=parseQuery(t); return findNames(text,num).length>0; };
 
 // ---------- a whole address, pasted: "3600 S Vermont Ave, Los Angeles, CA 90007" ----------
-// the end of an address: a unit ("Apt 4", "#4", "Unit 4", "Ste 100"), and the ZIP code with the state before it and the
-// country after it
-const UNIT=/(^|\s)(#\s*[\w-]+|(apt|apartment|unit|ste|suite|bldg|building|fl|floor|rm|room|spc|space)\.?\s*#?\s*(\d[\w-]*|[a-z]))$/i;
+// the end of an address: a unit ("Apt 4", "#4", "Unit 4", "Ste 100"; a lone letter only after a space or #, so "Flo" and
+// "Stev" typed on the way to Flower and Stevenson stay), and the ZIP code with the state before it and the country after it
+const UNIT=/(^|\s)(#\s*[\w-]+|(apt|apartment|unit|ste|suite|bldg|building|fl|floor|rm|room|spc|space)\.?(\s*#?\s*\d[\w-]*|(\s+#?\s*|\s*#\s*)[a-z]))$/i;
 const ZIP=/\s*\b((ca|calif|california)\.?\s+)?\d{5}(-\d{4})?(\s+(usa|us|united states))?$/i, STATE=/^(ca|calif|california|usa?|unitedstates(ofamerica)?)$/;
 // names for the City of Los Angeles or a part of it, besides its neighborhoods (hoods.json)
-const LA_PARTS=['Los Angeles','LA','City of Los Angeles','DTLA','Downtown LA','Downtown Los Angeles','South LA','South Los Angeles','South Central','West LA','NoHo','Sunland-Tujunga','Little Tokyo','Terminal Island','Atwater'];
+const LA_PARTS=['Los Angeles','LA','City of Los Angeles','DTLA','Downtown LA','Downtown Los Angeles','South LA','South Los Angeles','South Central','West LA','NoHo','Sunland-Tujunga','Little Tokyo','Terminal Island','Atwater',
+  'Financial District','Arts District','Fashion District','Jewelry District','Toy District','Bunker Hill','Skid Row','Ktown','Thai Town','Little Armenia','Historic Filipinotown','Frogtown','Miracle Mile','Mid-City','Mid-Wilshire','Larchmont','Larchmont Village','Westwood Village','Venice Beach','Palisades','Marina Peninsula','Playa Vista','Hollywood Hills','Valley Village','Toluca Lake','Sawtelle','Cheviot Hills','Leimert Park'];
+// the other cities and the unincorporated places around the City: named after a comma, the page says it doesn't cover them.
+// Some of their post office names also take in parts of the City (Beverly Hills' 90210 takes in Beverly Crest, Gardena's
+// and Torrance's take in Harbor Gateway): with one of those, a house number on a hundred block the City has in those
+// neighborhoods (by the middle of its data cell, or at the City's edge) is the City's; elsewhere it's another city's
+// address that happens to share a City street's name (101 N La Brea Ave, Inglewood)
+const OTHER=new Set(['Agoura Hills','Alhambra','Altadena','Arcadia','Artesia','Avalon','Azusa','Baldwin Park','Bell','Bell Gardens','Bellflower','Beverly Hills','Bradbury','Burbank','Calabasas','Carson','Cerritos','Claremont','Commerce','Compton','Covina','Cudahy','Culver City','Del Aire','Diamond Bar','Downey','Duarte','East Los Angeles','East LA','El Monte','El Segundo','Florence-Firestone','Gardena','Glendale','Glendora','Hawaiian Gardens','Hawthorne','Hermosa Beach','Hidden Hills','Huntington Park','Industry','Inglewood','Irwindale','La Canada Flintridge','La Cañada Flintridge','La Habra Heights','La Mirada','La Puente','La Verne','Ladera Heights','Lakewood','Lancaster','Lawndale','Lennox','Lomita','Long Beach','Lynwood','Malibu','Manhattan Beach','Marina del Rey','Maywood','Monrovia','Montebello','Monterey Park','Norwalk','Palmdale','Palos Verdes Estates','Paramount','Pasadena','Pico Rivera','Pomona','Rancho Palos Verdes','Redondo Beach','Rolling Hills','Rolling Hills Estates','Rosemead','San Dimas','San Fernando','San Gabriel','San Marino','Santa Clarita','Santa Fe Springs','Santa Monica','Sierra Madre','Signal Hill','South El Monte','South Gate','South Pasadena','Temple City','Topanga','Torrance','Universal City','Valencia','Vernon','View Park','Walnut','Walnut Park','West Athens','West Covina','West Hollywood','Westlake Village','Westmont','Whittier','Willowbrook','Windsor Hills'].map(n=>words(n).join(''))),
+  MIXED=new Map([['Beverly Hills',['Beverly Crest','Bel-Air','Hollywood Hills West']],['West Hollywood',['Hollywood Hills West','Hollywood Hills','Fairfax','Beverly Grove','Hollywood']],
+    ['Culver City',['Del Rey','Palms','Mar Vista','Cheviot Hills','West Los Angeles']],['Marina del Rey',['Venice','Del Rey','Playa del Rey','Playa Vista','Mar Vista']],
+    ['Gardena',['Harbor Gateway']],['Torrance',['Harbor Gateway','Harbor City']],['Carson',['Harbor Gateway','Wilmington','Harbor City']],['Universal City',['Studio City','Hollywood Hills','Toluca Lake']]]
+    .map(([n,hs])=>[words(n).join(''),hs]));
+const cellHood=c=>{ const [cx,cy]=META.cells[c].split('_').map(Number); return hoodAt((cx+.5)*META.cell-O[0],(cy+.5)*META.cell-O[1]); };
+const mixedOk=(rest,k)=>{ const {num,text}=parseQuery(rest); if(num===null) return false; const hs=MIXED.get(k);
+  return findNames(text,num).some(i=>groups(i).some(g=>g[0]===Math.floor(num/100)&&(n=>!n||hs.includes(n))(cellHood(g[1])))); };
 const squash=s=>words(s).join(''), TYPES=new Set(['st','ave','blvd','dr','pl','rd','ln','ct','ter','hwy','way','cir','trl','pkwy','walk','mall','plz','sq','aly','row']);
 // Los Angeles ("Los Angles" too) or one of its neighborhoods; while typing, the start of one of their names
 function inLA(s, typing){ const k=squash(s); return !k||/^losan/.test(k)||[...LA_PARTS,...(HOODS||[]).map(h=>h.name)].some(n=>typing?squash(n).startsWith(k):squash(n)===k); }
@@ -1217,7 +1234,12 @@ function cleanAddr(v, typing){
   const parts=v.replace(/^(\d+)(-\d+|\s*(1\/2|½))(?=\s)/,'$1').split(',').map(s=>s.replace(UNIT,'').trim()); let cut=false, out='';
   while(parts.length>1){ const p=parts[parts.length-1].replace(ZIP,'').replace(/\s+(ca|calif|california)\.?$/i,'').trim();
     if(STATE.test(squash(p))||inLA(p,typing)){ parts.pop(); cut=true; continue; }
-    if(HOODS&&/^[\p{L} .'-]+$/u.test(p)&&!words(p).some(w=>TYPES.has(w))&&!isStreet(parts.join(', '))) out=p;
+    // a state and the start of a ZIP code, still being typed
+    if(typing&&/^(ca|calif|california)\.?\s+\d{0,4}$/i.test(parts[parts.length-1])){ parts.pop(); cut=true; continue; }
+    if(HOODS&&/^[\p{L} .'-]+$/u.test(p)&&!words(p).some(w=>TYPES.has(w))&&!isStreet(parts.join(', '))){ const k=squash(p), rest=parts.slice(0,-1).join(', ');
+      if(OTHER.has(k)){ if(MIXED.has(k)&&mixedOk(rest,k)){ parts.pop(); cut=true; continue; } if(parseQuery(rest).num!==null||!isStreet(p)) out=p; }
+      // any other name that isn't a street is taken as a part of the City the list doesn't have ("Arts District")
+      else if(!isStreet(p)){ parts.pop(); cut=true; continue; } }
     break; }
   let t=parts.join(', '); const z=t.replace(ZIP,''); if(z.trim()&&z!==t){ t=z; cut=true; }
   // "Los Angeles" or "LA" at the end: after a comma or before a ZIP code, or after a house number and its street
@@ -1267,7 +1289,8 @@ async function findCorner(sa, sb){
     (await Promise.all(want.map(c=>loadCell(META.cells[c])))).forEach(c=>c.i.forEach(it=>{
       const a=it.n.find(i=>it.n.some(j=>ok.has(i+','+j))); if(a!==undefined) hits.push({x:it.x,y:it.y,a,b:it.n.find(j=>ok.has(a+','+j))}); }));
     if(!hits.length) continue;
-    const R=150/PX_M, gs=[]; hits.forEach(h=>{ const g=gs.find(g=>g.some(p=>Math.hypot(p.x-h.x,p.y-h.y)<R)); g?g.push(h):gs.push([h]); });
+    const R=150/PX_M, gs=[], pk=h=>[h.a,h.b].map(i=>base(META.names[i]).replace(/\s*\(.*\)$/,'')).join('|');
+    hits.forEach(h=>{ const g=gs.find(g=>g.some(p=>{ const d=Math.hypot(p.x-h.x,p.y-h.y); return d<60/PX_M||pk(p)===pk(h)&&d<R; })); g?g.push(h):gs.push([h]); });
     return gs.map(g=>{ const mx=g.reduce((s,p)=>s+p.x,0)/g.length, my=g.reduce((s,p)=>s+p.y,0)/g.length, d=p=>Math.hypot(p.x-mx,p.y-my);
       const p=g.reduce((a,p)=>d(p)<d(a)?p:a); return {...p,name:`${META.names[p.a]} & ${META.names[p.b]}`}; }).sort((a,b)=>a.x-b.x);
   }
@@ -1333,15 +1356,16 @@ q.addEventListener('input',()=>{ if(!q.value.trim()) clearStreet(); sugWait=sugg
 q.addEventListener('keydown',e=>{
   if(e.key==='ArrowDown'||e.key==='ArrowUp'){ if(!options.length) return; e.preventDefault(); active=(active+(e.key==='ArrowDown'?1:options.length-1))%options.length; renderSugg(); }
   // Enter waits for suggestions still on their way (the streets loading, a corner being looked for)
-  else if(e.key==='Enter'){ e.preventDefault(); const v=q.value;
-    Promise.resolve(sugWait).then(()=>{ if(q.value!==v) return; if(options[active]) choose(options[active]); else if(v.trim()) nothingFound(); }); }
+  // (only the latest Enter acts; with no list showing, after Escape or a choice, it looks again first)
+  else if(e.key==='Enter'){ e.preventDefault(); const v=q.value, n=++enterN; if(!options.length&&v.trim()) sugWait=suggest();
+    Promise.resolve(sugWait).then(()=>{ if(n!==enterN||q.value!==v) return; if(options[active]) choose(options[active]); else if(v.trim()) nothingFound(); }); }
   else if(e.key==='Escape'){ sugN++; options=[]; renderSugg(); } });
 q.addEventListener('blur',()=>setTimeout(()=>{ sugN++; options=[]; renderSugg(); },100));
 function nothingFound(){ $('#cands').innerHTML='';
   const Q=META&&readQuery(q.value,false), sides=Q&&!Q.out&&STREETS&&Q.num===null&&cornerSides(Q.text);
   msg(!META?'The street data didn\'t load, so for now the search only finds neighborhoods. Try reloading the page.'
     :Q.out?`<b>${esc(caps(Q.out))}</b> is outside the City of Los Angeles. This page only covers the City, where LAPD takes the reports; you can still search for a street there.`
-    :sides&&sides.every(s=>sideStreets(s).length)?`“${esc(sides[0])}” and “${esc(sides[1])}” don't meet in the City of Los Angeles. Try one of them alone, or two streets that meet, like “Western &amp; 3rd”.`
+    :sides&&sides.every(s=>sideStreets(s).length)?`Couldn't find where “${esc(sides[0])}” and “${esc(sides[1])}” meet in the City of Los Angeles. Try more of each name, or one of them alone.`
     :`No street in the City of Los Angeles or neighborhood matches “${esc(q.value.trim())}”. Try just the street name, like “Vermont”, or a house number and the street, like “3600 Vermont”.`); }
 // a searched street: outline its blocks (still drawn when zoomed out) and fit the map to them; h: only that hundred
 let streetReq=0;
@@ -1377,7 +1401,7 @@ function groupLabels(list){
   return lab.map(l=>m[l]>1?`${l} #${k[l]=(k[l]||0)+1}`:l); }
 const tally=a=>a.reduce((o,v)=>(o[v]=(o[v]||0)+1,o),{});
 function choose(o){
-  options=[]; renderSugg(); q.blur(); q.value=o.label;
+  enterN++; options=[]; renderSugg(); q.blur(); q.value=o.label;
   if(o.hood!==undefined){ $('#cands').innerHTML=''; clearStreet(); const all=goHood(o.hood);
     msg(`<b>${esc(o.label)}</b> is outlined on the map.${META?' Tap the map to pick a spot.':''}${all?'':' Drag the map to see the rest of it.'}`); showMap(); return; }
   // a place or an intersection from the summary, or a corner whose two streets meet in one place: go there; where they
@@ -1455,9 +1479,11 @@ function onFace(e){ const r=Math.PI/180, h=faceOf(e,(window.orientation??(screen
 
 /* ============ legend: what the map itself shows right now ============ */
 let legendKey='';
-function legend(){ const near=vb.w*PX_M<=SHOW_M, key=[near,!!spot,!!fix,!!HOODS,!!META,!!DIST,gDistSel.childElementCount,M(),range,Object.values(layers)].join();
+// your location's swatch once the compass turns it into an arrow (drawYou's arrow, small)
+const YOU_SW='<svg width="14" height="17" viewBox="-11 -14 22 27" aria-hidden="true"><path d="M0,-11L8.5,10L0,5L-8.5,10Z" fill="var(--map-you)" stroke="#fff" stroke-width="5" paint-order="stroke" stroke-linejoin="round"/></svg>';
+function legend(){ const near=vb.w*PX_M<=SHOW_M, key=[near,!!spot,!!fix,facing!==null,!!HOODS,!!META,!!DIST,gDistSel.childElementCount,M(),range,Object.values(layers)].join();
   if(key===legendKey) return; legendKey=key; const lg=$('#legend'); lg.innerHTML='';
-  const item=(css,txt)=>{ const li=H('li',{},lg); H('span',{className:'sw'},li).style.cssText=css; li.append(txt); return li; };
+  const item=(css,txt,svgSw)=>{ const li=H('li',{},lg); if(svgSw) li.insertAdjacentHTML('beforeend',svgSw); else H('span',{className:'sw'},li).style.cssText=css; li.append(txt); return li; };
   // the map stays light in dark mode, so its swatches sit on a bit of the map's background
   const edge='color-mix(in oklab,var(--map-sel) 60%,var(--map-bg))';
   if(near&&META&&spot) item(`width:14px;height:14px;border-radius:50%;background:color-mix(in oklab,var(--walk) 10%,var(--map-bg));border:1.5px dashed var(--map-sel)`,'The card counts inside this circle');
@@ -1470,15 +1496,17 @@ function legend(){ const near=vb.w*PX_M<=SHOW_M, key=[near,!!spot,!!fix,!!HOODS,
     if(layers.drugs) item(disc('var(--drugs)',1),'Drug offense reports');
     if(layers.cars) item(`width:13px;height:13px;border-radius:50%;border:3px solid var(--cars);background:var(--map-bg);${bg}`,'Car break-ins');
     if(layers.hit) item(`width:12px;height:12px;border-radius:6px;background:var(--hit);box-shadow:0 0 0 1.5px var(--map-bg),0 0 0 3px var(--map-bg)`,'People walking hit'); }
-  if(layers.calls&&ringsOn) item(`width:13px;height:13px;border-radius:50%;border:2.5px solid var(--calls);background:var(--map-bg);${bg}`,
-    near?'Calls to police, a ring per LAPD reporting district':'Calls to police, by LAPD reporting district');
+  if(layers.calls&&ringsOn) item(`width:13px;height:13px;border-radius:50%;border:2.5px solid var(--calls);background:${CALL_IN};${bg}`,
+    near?'Calls to police, a ring per LAPD reporting district':'Calls to police, each dot adding up the LAPD reporting districts centered in its square');
   if(dotsOn&&(layers.people||layers.drugs||layers.cars||layers.hit)||layers.calls&&ringsOn)
-    H('li',{textContent:near||!wideK?'Bigger and darker = more':`Bigger and darker = more. Each dot adds up a square about ${sqTxt()} across.`},lg);
+    H('li',{textContent:near||!wideK||!dotsOn||!(layers.people||layers.drugs||layers.cars||layers.hit)?'Bigger and darker = more'
+      :`Bigger and darker = more. Each ${layers.calls&&ringsOn?'dot of reports or people walking hit':'dot'} adds up a square about ${sqTxt()} across.`},lg);
   if(near&&layers.calls&&DIST) item(`height:0;border-top:1.5px solid color-mix(in oklab,var(--calls) 50%,var(--map-bg));${bg}`,'Reporting district edge');
   if(gDistSel.childElementCount) item(`width:16px;height:12px;border-radius:2px;border:2.5px solid var(--calls);background:var(--map-bg)`,'The spot\'s reporting district');
   if(HOODS&&!near) item(`width:16px;height:12px;border-radius:2px;border:1.5px solid ${edge};background:color-mix(in oklab,var(--map-line) 20%,var(--map-bg))`,'Neighborhood');
   if(HOODS&&near) item(`height:0;border-top:2px dashed ${edge};${bg}`,'Neighborhood edge');
-  if(fix) item('width:14px;height:14px;border-radius:50%;background:var(--map-you);border:2.5px solid #fff;box-shadow:0 0 0 3px color-mix(in oklab,var(--map-you) 25%,transparent)','Your location');
+  if(fix&&facing!==null) item('','Your location',YOU_SW);
+  else if(fix) item('width:14px;height:14px;border-radius:50%;background:var(--map-you);border:2.5px solid #fff;box-shadow:0 0 0 3px color-mix(in oklab,var(--map-you) 25%,transparent)','Your location');
   const li=H('li',{textContent:'Other cities, like Santa Monica, Beverly Hills and Culver City, aren\'t covered: they have their own police.'},lg);
   li.style.flexBasis='100%'; }
 

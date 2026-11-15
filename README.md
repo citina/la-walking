@@ -1,6 +1,6 @@
 # LA Walking
 
-**[LA Walking](https://citina.github.io/la-walking/)** is a map of the City of Los Angeles for people on foot. Pick a spot on the map, an address or where you are, and a distance
+**[LA Walking](https://citina.github.io/la-walking/)** is a map of the City of Los Angeles for people on foot. Pick a spot on the map, an address, a corner, a place or where you are, and a distance
 (100 to 500 m). The page shows what gets reported to police around it, what people call police about nearby, and how
 often people walking have been hit by cars there, when and why.
 

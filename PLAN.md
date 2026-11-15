@@ -23,8 +23,8 @@ police, the summary) built 2026-09-29; see §5.
   a compass back to north, the search box, and "Show what's around me" (`sf-streets/docs/index.html`, walk mode only).
 - The walking card: rows closed until tapped, each with its count under its name; kinds as rows that open to a note and
   a half-hour dot chart; ranks against every intersection ("Top 4% of LA intersections"); daylight / after dark; the
-  circle (100 to 500 m, 200 m to start); the link carries the spot and size but never your own location
-  (`#@34.05223,-118.24368/250m`).
+  circle (100 to 500 m, 200 m to start); the link carries the spot and size, and the dates and time of day when they
+  aren't the defaults (2026-11-15), but never your own location (`#@34.05223,-118.24368/250m/90d/dark`).
 - The City of LA street centerlines (LA GeoHub, `Street_Information/MapServer/36`, ~85k segments) for search, blocks and
   intersections, as `ticket-clock/fetch_city.py` downloads them; the address parsing in `ticket-clock/analyze_city.py`.
 - The LA Times neighborhoods (`ticket-clock/docs/streets/hoods.json`, 113 of 114, CC BY 4.0), committed as a static file.
@@ -69,7 +69,7 @@ See **[DATA_SOURCES.md](DATA_SOURCES.md)**: what will be used and for what, and 
 mast            LA Walking · (sister sites)                        Updated Sep 27 · About
 h1 + lede       "Pick a spot in LA to see what gets reported to police around it, and how often people walking are hit
                  by cars there." + a link to the city summary
-find bar        Show what's around me · search address / street / neighborhood / place
+find bar        Show what's around me · search address / street / corner / neighborhood / place
 time control    Dates [Since Jan 2025 ▾]   When [Any | Daylight | After dark]   Within [100–500 m slider, 200 m to start]
 ┌───────────────── map ─────────────────┐ ┌──────── card ────────┐
 │ layer chips                           │ │ "Near X & Y", hood    │
@@ -135,11 +135,27 @@ Left out: calls marked domestic violence (242 or 245 with D after the number: 36
 - *Violence & robbery reports* (on) — dots at LAPD's hundred blocks and corners, bigger = more.
 - *Drug offenses* (off).
 - *Car break-ins* (off) — dots, in their own color, as on SF Streets' driving side.
-- *People walking hit* (off) — dots at the places the build worked out.
-- *Calls to police* (off) — reporting districts shaded by calls per km² when zoomed out, the picked spot's district
-  outlined.
-- Neighborhoods shaded while the whole city shows (violence and robbery reports per km of street), as on SF Streets.
+- *People walking hit* (on from 2026-11-15; off before) — dots at the places the build worked out, the people hit at one
+  place added up.
+- *Calls to police* (off) — a ring per reporting district (2026-11-15), at a point well inside it (the point farthest
+  from its edges, worked out in the build), sized by its calls on the dates and time of day picked and tinted inside;
+  zoomed in, the district edges as thin lines; the picked spot's district outlined while the card's calls row is open.
+  Before, the layer shaded districts by calls per km², and downtown's tiny districts were all the same blue (Citina,
+  2026-11-14: "not informative").
+- The map is quieter, as on SF Streets (2026-11-15): gray map images, and dots that grow with the square root of the
+  count (area with the count) up to 32 px at a top per layer, the color stronger the more there are. Tops near the most
+  at any one place on all the dates: violence and robbery 200, drug offenses 400, car break-ins 100, calls 1,600 per
+  district; people walking hit 20 (the most at one place is 5, but with a top of 5 one person was a 17 px dark disc).
+- Zoomed out (wider than 3 km), each layer that's on shows dots that add up squares of the map (`grid.json`, 253 m
+  squares added into 2×, 4×… squares in the browser so each is at least 16 px across), sized from the biggest square at
+  that size on all the dates, so shorter dates give smaller dots (Citina, 2026-11-14: "when i zoom out, i want to see
+  how the blue dots distributed around"). This replaced the neighborhoods shaded by violence and robbery per km of
+  street; neighborhoods stay as outlines to pick.
 - The card's circle on top. What to tap is said on the map ("Tap the map to pick a spot") until something is picked.
+- Which way you're facing (2026-11-15, from SF Streets): on a phone, "Near me" also turns on the compass (an iPhone asks
+  once, for "Motion & Orientation"), and the red dot becomes an arrow the way the phone points. Phones go by magnetic
+  north, so the page adds 11° for LA (WMM2025 at 34.05° N, 118.25° W: 11.3–11.4° E in 2026). Not yet tried on a real
+  phone.
 
 **Summary** (the City as a whole, like SF Streets' walking summary)
 
@@ -162,7 +178,7 @@ Left out: calls marked domestic violence (242 or 245 with D after the number: 36
 - The disclaimer is one short paragraph: built from LAPD's and the state's data, which miss what isn't reported; the
   explanations are the page's own reading of the data. "What the page loads" behind "More".
 - Privacy lines promise only what the page does: "Show what's around me" puts the circle there, in the browser, kept out
-  of the link.
+  of the link; the phone's compass only turns the arrow and isn't sent anywhere.
 - A term the reader meets is explained where it's used, or linked with a "?".
 - No dataset IDs, NIBRS codes or radio codes on the page. Datasets named in the method are linked.
 - How badly one person was hurt isn't shown for a small circle (it could point to someone), as on SF Streets. No victim
@@ -194,7 +210,12 @@ hoods.json       docs/hoods.json (committed)  copied from ticket-clock/docs/stre
   `dispatch_date` (about 13,500 a month; the whole window in 50 s). `analyze_la.py` counts them per reporting district
   and group in daylight and after dark (from the dispatch time), with their half hours, into `districts.json` with the
   district outlines (simplified to 3 px; 750 KB, 209 KB gzipped), loaded with the first spot. Districts are ranked by
-  calls per km² (median district 0.68 km²; median 227 calls per km², top 1% at least 5,285).
+  calls per km² (median district 0.68 km²; median 227 calls per km², top 1% at least 5,285). Since 2026-11-15
+  `districts.json` also has each district's ring point (`p`) and its calls after dark per date range (`k`).
+- **Zoomed-out squares** (2026-11-15): `grid.json` (380 KB, 65 KB gzipped) has, per layer, the 253 m squares with any
+  reports, people walking hit or calls in them, each with its counts per date range in daylight, after dark and (for
+  police reports) at no known time; calls count at their district's ring point. The page adds them into bigger squares
+  as the map zooms out.
 - **Placing crashes** (built 2026-09-29; CCRS rows without coordinates, 99.6% of LAPD's): the people walking hurt come
   from `InjuredWitnessPassengers` (`InjuredPersonType` Pedestrian), their crashes from `Crashes`, both queried on
   data.ca.gov (City Name Los Angeles), a year per file. A report sent twice keeps its last version. The crash goes
@@ -292,6 +313,14 @@ hoods.json       docs/hoods.json (committed)  copied from ticket-clock/docs/stre
 - [x] **High Injury Network taken off** (Citina, 2026-11-14) — the layer, the card's line, the note under the map, the
   method row and the source. The data goes too: fetch_la.py no longer downloads it, and the cells and index.json no
   longer carry it.
+- [x] **From SF Streets, and fixes from a look as a user** (Citina, 2026-11-14 and 15) — on a phone, the layers in one
+  row that scrolls sideways, a place in the summary brings the whole map into view with the short answer above it, the
+  dates menu at 16 px (iPhones zoom in on smaller), the card's hit chart readable in dark mode; beside the map, a new spot
+  scrolls back to the new card's title. Then the calls as rings, the dots zoomed out, the gray map and growing dots,
+  people walking hit on to start, the compass arrow, search for whole addresses (", Los Angeles, CA 90007"), corners
+  ("Western and Wilshire") and the summary's places ("Union Station"), the dates and time of day in the link, link
+  previews (`og.png`, a 1200 × 630 screenshot of the page with the OpenStreetMap credit) and a favicon, and car
+  break-ins in the summary's table and sentences.
 - [ ] **8. Sister sites** — add it to the masthead and About cards of the other four pages.
 
 ---
