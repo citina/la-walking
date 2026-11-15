@@ -351,8 +351,8 @@
         <button class="locbtn" id="locBtn"><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="5.2" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="8" cy="8" r="2" fill="currentColor"/><path d="M8 0v2.6M8 13.4V16M0 8h2.6M13.4 8H16" stroke="currentColor" stroke-width="1.6"/></svg><span class="lbl">Show what's around me</span><span class="short" aria-hidden="true">Near me</span></button>
         <div class="searchbox">
           <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="6.8" cy="6.8" r="5" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="m10.6 10.6 4.4 4.4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
-          <input type="search" id="q" placeholder="Address or neighborhood" autocomplete="off" spellcheck="false"
-                 role="combobox" aria-label="Enter a street, address or neighborhood" aria-expanded="false" aria-controls="sugg" aria-autocomplete="list">
+          <input type="search" id="q" placeholder="Address, corner or place" autocomplete="off" spellcheck="false"
+                 role="combobox" aria-label="Enter a street, address, corner, neighborhood or place" aria-expanded="false" aria-controls="sugg" aria-autocomplete="list">
           <ul class="sugg" id="sugg" role="listbox" hidden></ul>
         </div>
       </div>
@@ -1136,9 +1136,11 @@ function goHood(i){
   return fits;
 }
 
-/* ============ search: a street, a house number and a street, or a neighborhood ============ */
+/* ============ search: a street, a house number and a street (or a whole address), a corner, a neighborhood, or a
+   place from the summary ============ */
 const q=$('#q'), sugg=$('#sugg');
 let loadingStreets=null, active=-1, options=[];
+let sugN=0, sugWait=null;   // the latest suggestions (an older or closed list's late results are dropped), and when they're done
 const ABBR={avenue:'ave',av:'ave',street:'st',boulevard:'blvd',bl:'blvd',drive:'dr',place:'pl',road:'rd',lane:'ln',court:'ct',terrace:'ter',highway:'hwy',north:'n',south:'s',east:'e',west:'w'};
 const words=s=>s.toLowerCase().replace(/['’]/g,'').replace(/[.,#()\/&-]/g,' ').split(/\s+/).filter(Boolean).map(w=>ABBR[w]||w);
 // every word typed starts a word of the name; typed words run together also count ("mc clintock" finds McClintock)
@@ -1148,7 +1150,8 @@ const matches=(qw, nw)=>qw.every(w=>nw.some(x=>x.startsWith(w)))||qw.length>1&&n
 // neighborhood around it (its place in hoods.json) where the street has that hundred in more than one place
 function getStreets(){ return loadingStreets||(loadingStreets=fetch('data/streets.json').then(r=>{ if(!r.ok) throw new Error(r.status); return r.json(); })
   .then(s=>{ STREETS=s; return s; }).catch(e=>{ loadingStreets=null; throw e; })); }
-function parseQuery(v){ const m=v.trim().match(/^(\d+)\s*(.*)$/); return m?{num:+m[1],text:m[2]}:{num:null,text:v.trim()}; }
+// a house number first, but not the 3 of "3rd St" or the 21 of "21st St"
+function parseQuery(v){ const m=v.trim().match(/^(\d+)(?!\d|(?:st|nd|rd|th)\b)\s*(.*)$/i); return m?{num:+m[1],text:m[2]}:{num:null,text:v.trim()}; }
 const groups=i=>STREETS[i]?STREETS[i].slice(1):[];
 function findNames(text, num){
   const qw=words(text); if(!qw.length) return [];
@@ -1160,34 +1163,151 @@ function findNames(text, num){
     out.push([i, -exact, nw.length, -gs.length]); });
   return out.sort((a,b)=>a[1]-b[1]||a[2]-b[2]||a[3]-b[3]).slice(0,8).map(r=>r[0]);
 }
+const isStreet=t=>{ if(!META||!STREETS) return false; const {num,text}=parseQuery(t); return findNames(text,num).length>0; };
+
+// ---------- a whole address, pasted: "3600 S Vermont Ave, Los Angeles, CA 90007" ----------
+// the end of an address: a unit ("Apt 4", "#4", "Unit 4", "Ste 100"), and the ZIP code with the state before it and the
+// country after it
+const UNIT=/(^|\s)(#\s*[\w-]+|(apt|apartment|unit|ste|suite|bldg|building|fl|floor|rm|room|spc|space)\.?\s*#?\s*(\d[\w-]*|[a-z]))$/i;
+const ZIP=/\s*\b((ca|calif|california)\.?\s+)?\d{5}(-\d{4})?(\s+(usa|us|united states))?$/i, STATE=/^(ca|calif|california|usa?|unitedstates(ofamerica)?)$/;
+// names for the City of Los Angeles or a part of it, besides its neighborhoods (hoods.json)
+const LA_PARTS=['Los Angeles','LA','City of Los Angeles','DTLA','Downtown LA','Downtown Los Angeles','South LA','South Los Angeles','South Central','West LA','NoHo','Sunland-Tujunga','Little Tokyo','Terminal Island','Atwater'];
+const squash=s=>words(s).join(''), TYPES=new Set(['st','ave','blvd','dr','pl','rd','ln','ct','ter','hwy','way','cir','trl','pkwy','walk','mall','plz','sq','aly','row']);
+// Los Angeles ("Los Angles" too) or one of its neighborhoods; while typing, the start of one of their names
+function inLA(s, typing){ const k=squash(s); return !k||/^losan/.test(k)||[...LA_PARTS,...(HOODS||[]).map(h=>h.name)].some(n=>typing?squash(n).startsWith(k):squash(n)===k); }
+// an address without what follows the street, and the city it names (out) when that's another one, like Santa Monica
+// (known once the neighborhoods have loaded); what follows a comma can also be part of a street's name ("Martin Luther
+// King, Jr Blvd"). typing: a city still being typed that could be Los Angeles or one of its neighborhoods counts as one,
+// so the suggestions stay
+function cleanAddr(v, typing){
+  const parts=v.replace(/^(\d+)(-\d+|\s*(1\/2|½))(?=\s)/,'$1').split(',').map(s=>s.replace(UNIT,'').trim()); let cut=false, out='';
+  while(parts.length>1){ const p=parts[parts.length-1].replace(ZIP,'').replace(/\s+(ca|calif|california)\.?$/i,'').trim();
+    if(STATE.test(squash(p))||inLA(p,typing)){ parts.pop(); cut=true; continue; }
+    if(HOODS&&/^[\p{L} .'-]+$/u.test(p)&&!words(p).some(w=>TYPES.has(w))&&!isStreet(parts.join(', '))) out=p;
+    break; }
+  let t=parts.join(', '); const z=t.replace(ZIP,''); if(z.trim()&&z!==t){ t=z; cut=true; }
+  // "Los Angeles" or "LA" at the end: after a comma or before a ZIP code, or after a house number and its street
+  const l=t.replace(/\s+(los angeles|l\.?a\.?)$/i,''); if(l!==t&&l.trim()&&(cut||parseQuery(l).num!==null&&!isStreet(t)&&isStreet(l))) t=l;
+  return {text:t.replace(UNIT,'').trim(), out};
+}
+// what was typed: a house number and the rest, and another city it names
+function readQuery(v, typing){ const a=cleanAddr(v,typing); return {...parseQuery(a.text), out:a.out}; }
+const caps=s=>s===s.toLowerCase()?s.replace(/(^|\s)\p{L}/gu,c=>c.toUpperCase()):s;
+
+// ---------- a corner: two streets ("Western & 3rd", "Sunset and Vine", "Wilshire at Western", "A / B", "A @ B") ----------
+const JOIN=/\s+(?:and|at)\s+|\s*[&@\/]\s*/i, DIRS=new Set(['n','s','e','w']);
+// the two streets typed, each with two letters or digits or more (so "W Topham Street S/R" is one street)
+function cornerSides(text){ const p=text.split(JOIN).map(s=>s.trim()); return p.length===2&&p.every(s=>(s.match(/[\p{L}\d]/gu)||[]).length>=2)?p:null; }
+const NW=[], nameWords=i=>NW[i]||(NW[i]=words(META.names[i]));
+// how well what's typed fits a street's name: 0 the name itself, with or without its direction and type ("Western",
+// "S Western" or "Western Ave" for S Western Ave), 1 each word typed is one of its words, 2 typed in part; -1 not at all
+function nameFit(qw, nw){ if(!matches(qw,nw)) return -1;
+  const core=w=>{ let d='', t=''; if(w.length>1&&DIRS.has(w[0])){ d=w[0]; w=w.slice(1); } if(w.length>1&&TYPES.has(w[w.length-1])){ t=w[w.length-1]; w=w.slice(0,-1); } return [d,w.join(' '),t]; };
+  const [qd,qc,qt]=core(qw), [nd,nc,nt]=core(nw);
+  return qc===nc&&(!qd||qd===nd)&&(!qt||qt===nt)?0:qw.every(w=>nw.includes(w))?1:2; }
+// the streets one side of a corner could be: [street, fit, size], best fit first, then the longest; at most 12
+function sideStreets(text){ const qw=words(text), out=[]; if(!qw.length) return out;
+  META.names.forEach((nm,i)=>{ if(!STREETS[i]||STREETS[i].length<2) return; const f=nameFit(qw,nameWords(i)); if(f>=0) out.push([i,f,STREETS[i].length]); });
+  return out.sort((a,b)=>a[1]-b[1]||b[2]-a[2]).slice(0,12); }
+// the cells that are a street's or next to one of them
+const cellIx=()=>META._ix||(META._ix=new Map(META.cells.map((k,i)=>[k,i])));
+function nextTo(list){ const s=new Set(); list.forEach(c=>{ const [x,y]=META.cells[c].split('_').map(Number);
+  for(let i=-1;i<=1;i++) for(let j=-1;j<=1;j++){ const k=cellIx().get(`${x+i}_${y+j}`); if(k!==undefined) s.add(k); } }); return s; }
+// where the two streets of a corner meet: the intersections (in the cells, {x, y, n: its streets}) with a street of each
+// side, for the best-fitting names that meet anywhere, one side's name at least as typed (so "Vermont and Western"
+// isn't Vermont Canyon Rd and Western Avenue Canyon Rd, in Griffith Park). An intersection is in the cell its point is
+// in and a block in the one its middle is in, so a corner is in a cell with a block of one street, and of the other
+// there or next to it (all but 47 of the 47,944 pairs of streets at the City's intersections). The cells both streets
+// are in load first, then the ones next to them for a pair with 8 or fewer of those (more is two streets side by side,
+// like S Western Ave and S 3rd Ave), 40 at most. Points within 150 m of each other (the two halves of a divided street,
+// streets that jog) are one place, the point nearest their middle.
+async function findCorner(sa, sb){
+  const A=sideStreets(sa), B=sideStreets(sb), near=new Map(), nb=i=>near.get(i)||near.set(i,nextTo(STREETS[i][0])).get(i);
+  let left=40;
+  for(let lv=0;lv<=2&&left>0&&A.length&&B.length;lv++){
+    const pairs=A.flatMap(([a,fa])=>B.filter(([b,fb])=>fa+fb===lv&&!(fa&&fb)&&base(META.names[a])!==base(META.names[b])).map(([b])=>[a,b])); if(!pairs.length) continue;
+    const both=[], next=[]; pairs.forEach(([a,b])=>{ const s=STREETS[a][0].filter(c=>STREETS[b][0].includes(c)), n=[...new Set([...STREETS[a][0].filter(c=>nb(b).has(c)),...STREETS[b][0].filter(c=>nb(a).has(c))])].filter(c=>!s.includes(c));
+      both.push(...s); if(n.length<=8) next.push(...n); });
+    const want=[...new Set([...both,...next])].slice(0,left);
+    left-=want.length; const ok=new Set(pairs.map(p=>p.join())), hits=[];
+    (await Promise.all(want.map(c=>loadCell(META.cells[c])))).forEach(c=>c.i.forEach(it=>{
+      const a=it.n.find(i=>it.n.some(j=>ok.has(i+','+j))); if(a!==undefined) hits.push({x:it.x,y:it.y,a,b:it.n.find(j=>ok.has(a+','+j))}); }));
+    if(!hits.length) continue;
+    const R=150/PX_M, gs=[]; hits.forEach(h=>{ const g=gs.find(g=>g.some(p=>Math.hypot(p.x-h.x,p.y-h.y)<R)); g?g.push(h):gs.push([h]); });
+    return gs.map(g=>{ const mx=g.reduce((s,p)=>s+p.x,0)/g.length, my=g.reduce((s,p)=>s+p.y,0)/g.length, d=p=>Math.hypot(p.x-mx,p.y-my);
+      const p=g.reduce((a,p)=>d(p)<d(a)?p:a); return {...p,name:`${META.names[p.a]} & ${META.names[p.b]}`}; }).sort((a,b)=>a.x-b.x);
+  }
+  return [];
+}
+// a corner's suggestion: where it's one place, its two names; else each side's name where every place has the same one
+// (or the same but for N and S), or as typed
+function cornerOpt(sides, ps){ const nm=(ids,typed)=>{ const n=[...new Set(ids.map(i=>META.names[i]))], b=[...new Set(n.map(base))]; return n.length===1?n[0]:b.length===1?b[0]:caps(typed); };
+  const a=nm(ps.map(p=>p.a),sides[0]), b=nm(ps.map(p=>p.b),sides[1]);
+  return {corner:ps,a,b,label:ps.length===1?ps[0].name:`${a} & ${b}`,note:ps.length===1?'intersection':`${num(ps.length)} intersections`}; }
+// a corner's chips: each place's neighborhood, or where two share one (or it's in none), the streets' names, with the
+// neighborhood too if those are the same
+function cornerLabels(ps){ const hs=ps.map(p=>hoodAt(p.x,p.y)), n=tally(hs), nn=tally(ps.map(p=>p.name));
+  const lab=ps.map((p,k)=>hs[k]&&n[hs[k]]===1?hs[k]:nn[p.name]===1||!hs[k]?p.name:`${p.name} (${hs[k]})`), m=tally(lab), c={};
+  return lab.map(l=>m[l]>1?`${l} #${c[l]=(c[l]||0)+1}`:l); }
+
+// ---------- the summary's places visitors go and its intersections with the most people walking hit ----------
+// by name or typed in part: "&", "and" and "at" alike, with or without the dots ("Crypto.com", "LA Live")
+function findPlaces(text){ const Z=META&&META.summary; if(!Z) return [];
+  const pw=s=>words(s.replace(/@/g,' ')).filter(w=>w!=='and'&&w!=='at'), qw=pw(text); if(!qw.length) return [];
+  return [...(Z.places||[]).map(p=>[p,'place']),...(Z.corners||[]).map(p=>[p,'intersection'])].flatMap(([[name,x,y],note])=>{
+    const a=pw(name), b=pw(name.replace(/\./g,'')); if(!matches(qw,[...a,...b])) return [];
+    return [{spot:[x-O[0],y-O[1]],label:name,note,exact:a.join('')===qw.join('')||b.join('')===qw.join('')}]; }); }
+// a corner or a place from search: the map centers on it and the card shows its circle
+function goPoint(x, y, name){ pickHood(-1); jumpTo(x,y,spotView()); setSpot(x,y,{name,fromSearch:true},false); showMap(); }
+
 function renderSugg(){ sugg.innerHTML=''; sugg.hidden=!options.length; q.setAttribute('aria-expanded',!!options.length);
   options.forEach((o,k)=>{ const li=H('li',{id:'opt'+k,role:'option'},sugg); li.append(o.label); H('small',{textContent:o.note},li);
     li.setAttribute('aria-selected',k===active); li.addEventListener('mousedown',e=>{ e.preventDefault(); choose(o); }); });
   if(active>=0) q.setAttribute('aria-activedescendant','opt'+active); else q.removeAttribute('aria-activedescendant'); }
 async function suggest(){
-  const v=q.value; if(!v.trim()){ options=[]; renderSugg(); return; }
+  const v=q.value, sn=++sugN; if(!v.trim()){ options=[]; renderSugg(); return; }
   if(META) try{ await getStreets(); }catch(e){}
-  if(q.value!==v) return;
-  const {num,text}=parseQuery(v);
-  options=META&&STREETS?findNames(text,num).map(i=>{ const n=groups(i).length;
+  if(q.value!==v||sn!==sugN) return;
+  // another city named after a comma (", Santa Monica"): nothing to suggest, and Enter says why
+  const {num,text,out}=META?readQuery(v,true):{...parseQuery(v),out:''};
+  options=!out&&META&&STREETS?findNames(text,num).map(i=>{ const n=groups(i).length;
     return {s:i,num,label:num!==null?`${num} ${META.names[i]}`:META.names[i],note:num!==null?hund(Math.floor(num/100)*100):n>1?`${n} blocks`:'1 block'}; }):[];
   // neighborhoods after the streets, or first when the name is exactly what was typed
   const qw=words(text);
-  if(num===null&&HOODS&&qw.length){ let k=0;
+  if(!out&&num===null&&HOODS&&qw.length){ let k=0;
     HOODS.forEach((h,i)=>{ const nw=words(h.name); if(k>=3||!matches(qw,nw)) return; k++;
       const o={hood:i,label:h.name,note:'neighborhood'};
       if(nw.join(' ')===qw.join(' ')) options.unshift(o); else options.push(o); }); }
+  // the summary's places and intersections after those, or first when the name is exactly what was typed (after a
+  // neighborhood of the same name, like Chinatown)
+  let lead=options.length&&options[0].hood!==undefined&&words(options[0].label).join(' ')===qw.join(' ')?1:0;
+  if(!out&&num===null){ const ps=findPlaces(text), ex=ps.filter(p=>p.exact); options.splice(lead,0,...ex); lead+=ex.length; options.push(...ps.filter(p=>!p.exact).slice(0,3)); }
   active=options.length?0:-1; renderSugg();
+  // a corner: once typing stops for a moment, the cells where the two streets can meet load, and the corner goes in after
+  // the names typed exactly, before the streets. A place typed by its name at the same spot stays alone (Hollywood &
+  // Highland is 20 m from the corner, and its circle is the summary's); the summary's intersection gives way to it.
+  const sides=!out&&num===null&&STREETS&&cornerSides(text); if(!sides) return;
+  await new Promise(r=>setTimeout(r,150)); if(q.value!==v||sn!==sugN) return;
+  const ps=await findCorner(...sides); if(q.value!==v||sn!==sugN||!ps.length) return;
+  const at=(o,p)=>o.spot&&Math.hypot(p.x-o.spot[0],p.y-o.spot[1])<60/PX_M; if(ps.length===1&&options.slice(0,lead).some(o=>at(o,ps[0]))) return;
+  const cur=active>0?options[active]:null, dup=o=>o.note==='intersection'&&ps.some(p=>at(o,p));
+  lead-=options.slice(0,lead).filter(dup).length; options=options.filter(o=>!dup(o)); options.splice(lead,0,cornerOpt(sides,ps));
+  active=cur&&options.includes(cur)?options.indexOf(cur):0; renderSugg();
 }
 q.addEventListener('focus',()=>{ if(META) getStreets().catch(()=>{}); });
-q.addEventListener('input',()=>{ if(!q.value.trim()) clearStreet(); suggest(); });
+q.addEventListener('input',()=>{ if(!q.value.trim()) clearStreet(); sugWait=suggest(); });
 q.addEventListener('keydown',e=>{
   if(e.key==='ArrowDown'||e.key==='ArrowUp'){ if(!options.length) return; e.preventDefault(); active=(active+(e.key==='ArrowDown'?1:options.length-1))%options.length; renderSugg(); }
-  else if(e.key==='Enter'){ e.preventDefault(); if(options[active]) choose(options[active]); else if(q.value.trim()) nothingFound(); }
-  else if(e.key==='Escape'){ options=[]; renderSugg(); } });
-q.addEventListener('blur',()=>setTimeout(()=>{ options=[]; renderSugg(); },100));
+  // Enter waits for suggestions still on their way (the streets loading, a corner being looked for)
+  else if(e.key==='Enter'){ e.preventDefault(); const v=q.value;
+    Promise.resolve(sugWait).then(()=>{ if(q.value!==v) return; if(options[active]) choose(options[active]); else if(v.trim()) nothingFound(); }); }
+  else if(e.key==='Escape'){ sugN++; options=[]; renderSugg(); } });
+q.addEventListener('blur',()=>setTimeout(()=>{ sugN++; options=[]; renderSugg(); },100));
 function nothingFound(){ $('#cands').innerHTML='';
+  const Q=META&&readQuery(q.value,false), sides=Q&&!Q.out&&STREETS&&Q.num===null&&cornerSides(Q.text);
   msg(!META?'The street data didn\'t load, so for now the search only finds neighborhoods. Try reloading the page.'
+    :Q.out?`<b>${esc(caps(Q.out))}</b> is outside the City of Los Angeles. This page only covers the City, where LAPD takes the reports; you can still search for a street there.`
+    :sides&&sides.every(s=>sideStreets(s).length)?`“${esc(sides[0])}” and “${esc(sides[1])}” don't meet in the City of Los Angeles. Try one of them alone, or two streets that meet, like “Western &amp; 3rd”.`
     :`No street in the City of Los Angeles or neighborhood matches “${esc(q.value.trim())}”. Try just the street name, like “Vermont”, or a house number and the street, like “3600 Vermont”.`); }
 // a searched street: outline its blocks (still drawn when zoomed out) and fit the map to them; h: only that hundred
 let streetReq=0;
@@ -1226,6 +1346,14 @@ function choose(o){
   options=[]; renderSugg(); q.blur(); q.value=o.label;
   if(o.hood!==undefined){ $('#cands').innerHTML=''; clearStreet(); const all=goHood(o.hood);
     msg(`<b>${esc(o.label)}</b> is outlined on the map.${META?' Tap the map to pick a spot.':''}${all?'':' Drag the map to see the rest of it.'}`); showMap(); return; }
+  // a place or an intersection from the summary, or a corner whose two streets meet in one place: go there; where they
+  // meet in more than one, a chip for each
+  if(o.spot||o.corner){ const box=$('#cands'); box.innerHTML=''; clearStreet();
+    if(o.spot||o.corner.length===1){ const p=o.corner?o.corner[0]:{x:o.spot[0],y:o.spot[1],name:o.label}; msg(''); goPoint(p.x,p.y,p.name); return; }
+    pickHood(-1); msg(`<b>${esc(o.a)}</b> and <b>${esc(o.b)}</b> meet in ${num(o.corner.length)} places. Pick one:`);
+    const labs=cornerLabels(o.corner); o.corner.forEach((p,k)=>{ const c=H('button',{className:'chip sm',textContent:labs[k]},box);
+      c.onclick=()=>{ box.querySelectorAll('.chip').forEach(x=>x.setAttribute('aria-pressed',String(x===c))); goPoint(p.x,p.y,p.name); }; });
+    return; }
   pickHood(-1);
   const all=groups(o.s), name=META.names[o.s], box=$('#cands'); box.innerHTML='';
   const chips=list=>{ const labs=groupLabels(list); list.forEach((en,k)=>{ const c=H('button',{className:'chip sm',textContent:labs[k]},box);
