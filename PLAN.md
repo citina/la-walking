@@ -93,8 +93,8 @@ about · disclaimer
    drawn on the map when this row is open. Note: "A call is what someone reported, not what police found. LAPD gives
    only the district." (decision 3: kept)
 3. **People walking hit** — "16 people walking hit since Jan 2025" and "3 badly hurt or killed", big number first; the
-   High Injury Network streets through the circle (with a "?" to its explanation); the rank; the hour chart; after dark;
-   the top causes in plain words.
+   High Injury Network streets through the circle (with a "?" to its explanation; taken off 2026-11-14); the rank; the
+   hour chart; after dark; the top causes in plain words.
 
 Before a spot is picked the card is one line. After a search on a phone, the message above the map gives the short
 answer and "See the card ↓", as on SF Streets.
@@ -131,7 +131,7 @@ Left out: calls marked domestic violence (242 or 245 with D after the number: 36
 
 **Map layers**
 
-- *High Injury Network* (on) — LA County's list, the corridors inside the City.
+- *High Injury Network* (on) — LA County's list, the corridors inside the City. (Taken off 2026-11-14.)
 - *Violence & robbery reports* (on) — dots at LAPD's hundred blocks and corners, bigger = more.
 - *Drug offenses* (off).
 - *Car break-ins* (off) — dots, in their own color, as on SF Streets' driving side.
@@ -151,7 +151,7 @@ Left out: calls marked domestic violence (242 or 245 with D after the number: 36
   LACMA, Exposition Park, USC...). Only places inside the City where LAPD is the police: Santa Monica Pier, Universal
   CityWalk and SoFi aren't in the City, and LAX, UCLA and the port have their own police, so they're left out; so is
   the Hollywood Bowl, whose circle holds almost no streets. 26 places in `analyze_la.py` `PLACES`.
-- The High Injury Network's share of the street length and of the people walking hit.
+- The High Injury Network's share of the street length and of the people walking hit. (Taken off 2026-11-14.)
 - Month by month from January 2025 (decision 4), not totals per year.
 
 **Wording rules** (from SF Streets, Citina)
@@ -179,7 +179,8 @@ hoods.json       docs/hoods.json (committed)  copied from ticket-clock/docs/stre
 ```
 
 - **Cells**: per cell, the blocks and intersections (milestone 1, below), the report points `[x, y, kind counts
-  daylight / dark, half hours]`, the crashes `[x, y, hour, severity, dark, cause]`, and the HIN lines in view.
+  daylight / dark, half hours]`, the crashes `[x, y, hour, severity, dark, cause]`, and the HIN lines in view (taken off
+  2026-11-14).
 - **Blocks and intersections** (built 2026-09-29): a block is one centerline segment (85,055, keyed by ASSETID), as on
   SF Streets, not LA Street Rules' hundred block cut from segments by address: the walking page needs the streets as a
   backdrop and a place to tap, not addresses to match tickets to. Each block keeps the house numbers at the two ends of
@@ -265,7 +266,8 @@ hoods.json       docs/hoods.json (committed)  copied from ticket-clock/docs/stre
   (551 miles), not the county's: the county hub publishes each city's ranked road windows with no cut-off, while LADOT
   publishes the City's own network, with one for people walking. 7,845 blocks are on it (a block is on it when most of
   it is within 20 m of an HIN line of the same street name; 99.2% of LADOT's lines are covered). Drawn under the dots
-  (on to start), named in the card's last row, with a "?" to the note under the map and a method row.
+  (on to start), named in the card's last row, with a "?" to the note under the map and a method row. Taken off the
+  page on 2026-11-14 (below).
 - [x] **4. People walking hit** — CCRS fetch, placing by street names, the check against LAPD's feed, the card's row
   (2026-09-29). 2,599 people walking hurt or killed in 2,464 crashes from 2025-01-01 to 2026-09-28, 95.7% of those off
   the freeways placed; the card's row (count, HIN streets, rank, hour chart, after dark, top causes) and a map layer
@@ -287,6 +289,9 @@ hoods.json       docs/hoods.json (committed)  copied from ticket-clock/docs/stre
   3.5 minutes and published the `la-data` and `la-downloads` releases, and Pages deploys from Actions. Runs on Python
   3.12, since Ubuntu 26 (`ubuntu-latest` from October 19, 2026) has no 3.9; the files match the laptop's 3.9 build.
 - [x] **Dates menu** — the date range for the map and the card (Citina, 2026-09-30); see §4.
+- [x] **High Injury Network taken off** (Citina, 2026-11-14) — the layer, the card's line, the note under the map, the
+  method row and the source. The data goes too: fetch_la.py no longer downloads it, and the cells and index.json no
+  longer carry it.
 - [ ] **8. Sister sites** — add it to the masthead and About cards of the other four pages.
 
 ---

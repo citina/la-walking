@@ -159,7 +159,6 @@
      so street names stay readable over a line */
   .tiles{position:absolute;inset:0;pointer-events:none;opacity:.72;mix-blend-mode:multiply}
   .blk{fill:none;stroke:var(--walk-line);stroke-width:6;stroke-linecap:round;vector-effect:non-scaling-stroke}
-  .hinl{fill:none;stroke:var(--walk);stroke-width:5;stroke-linecap:round;stroke-opacity:.85;vector-effect:non-scaling-stroke}
   .hit{fill:none;stroke:transparent;stroke-width:16;stroke-linecap:round;cursor:pointer;vector-effect:non-scaling-stroke}
   .dot{fill:none;stroke-opacity:.8;vector-effect:non-scaling-stroke}
   /* neighborhoods: outlines to pick while the whole city shows; closer in, only faint dashed edges */
@@ -273,13 +272,6 @@
   .radius output{font:14px "IBM Plex Mono",ui-monospace,Menlo,monospace;color:var(--ink);min-width:48px}
   .spot-ring{fill:var(--walk);fill-opacity:.07;stroke:var(--map-sel);stroke-opacity:.85;stroke-width:2;stroke-dasharray:6 4;vector-effect:non-scaling-stroke;pointer-events:none}
   .nb{white-space:nowrap}
-  /* "?" after a term: jumps to where the page explains it; the hit area is bigger than the mark */
-  .info{position:relative;display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;margin-left:5px;border-radius:50%;
-        border:1.5px solid currentColor;color:var(--accent-ink);font:700 12px/1 "Barlow",system-ui,sans-serif;text-decoration:none;vertical-align:1px}
-  .info::after{content:"";position:absolute;inset:-9px}
-  .info:hover{background:var(--well)}
-  .aside{max-width:var(--measure);border-left:3px solid var(--walk);padding:4px 0 4px 16px;margin:26px 0;font-size:16px;color:var(--ink-2)}
-  .aside b{color:var(--ink)}
   /* the big number of a part of the card, its words after it */
   .glance{display:grid;gap:6px;margin:0 0 4px}
   .glance>div{background:var(--well);border-radius:8px;padding:10px 12px}
@@ -371,7 +363,6 @@
 
       <!-- what the map draws; each layer comes with its milestone (PLAN.md §5) -->
       <div class="chips layers" data-multi><span class="ctl-label">Show</span>
-        <button class="chip sm" aria-pressed="true" data-layer="hin">High Injury Network</button>
         <button class="chip sm" aria-pressed="true" data-layer="people">Violence &amp; robbery</button>
         <button class="chip sm" aria-pressed="false" data-layer="drugs">Drug offenses</button>
         <button class="chip sm" aria-pressed="false" data-layer="cars">Car break-ins</button>
@@ -395,10 +386,6 @@
       <div class="p-sub" id="pSub"></div>
       <div id="walkCards"></div>
     </aside>
-  </div>
-
-  <div class="aside" id="hin">
-    <b>The High Injury Network</b> (the orange-red lines on the map) is LADOT's list of the streets where people walking are most often killed or badly hurt, made for Vision Zero, the City's goal of ending traffic deaths.<span id="hinShare"></span>
   </div>
 
   <!-- the City as a whole, filled in from index.json's summary once it loads -->
@@ -463,8 +450,6 @@
         <p><a href="https://data.lacity.org/d/xjgu-z4ju">LAPD's calls for service</a> from January 2025, grouped by LAPD's radio codes: fights and assaults (battery, assault with a weapon other than a gun, and disturbance calls about a fight or an assault); someone with a gun or knife (shots fired or heard, and disturbance calls about someone with a gun or a knife); robbery (carjacking and purse snatching included); and threats and harassment (criminal threats and indecent exposure). Calls marked domestic violence aren't counted. LAPD gives each call only its reporting district, not where in it, so the card counts the calls in the spot's district, not the circle, and outlines the district on the map; the layer shades each district by these calls per km². The rank compares the district's calls per km² with every other district's. A call's time is when police were sent. A call is what someone reported, not what police found; one event can bring several calls, and a call can come from anywhere, homes included.<span id="mCalls"></span></p></details>
       <details><summary>People walking hit</summary>
         <p><a href="https://data.ca.gov/dataset/ccrs">California's crash reports</a> (the California Crash Reporting System) from January 2025: each person walking who was hurt or killed by a vehicle in the City of Los Angeles, as the report lists them, whether LAPD or another agency took the report. Crashes on freeways aren't counted. LAPD's reports give two streets, not the spot (“Vermont Ave at 8th St, 50 ft west”), so the page places each crash where the two streets meet, then that far along the first street, or at the house number when the report gives one. Where the same two streets meet in more than one place, LAPD's reporting district picks. The main cause is the report's primary collision factor, in plain words. How badly each person was hurt isn't shown on the card: a circle holds so few people that it could point to someone.<span id="mHit"></span></p></details>
-      <details><summary>High Injury Network</summary>
-        <p>The High Injury Network for people walking from LADOT's <a href="https://ladot.lacity.gov/sites/default/files/documents/la-vz-safety-study-2024.pdf">2024 Vision Zero Safety Study</a>. LADOT scored each street by the crashes there from 2017 to 2021 in which someone was hurt, counting deaths and severe injuries most, and people walking, children and people over 65 more; and by what the street is like: fast or busy traffic, truck routes, schools and bus stops nearby, many people walking, and neighborhoods the City counts as in the most need. The network is the 551 miles that scored highest for people walking: 7.5% of the City's streets, with 72% of the crashes that killed or badly hurt someone walking in those years. The map marks a block as on it when most of the block lies within 20 m of LADOT's line for that street. The card names the streets on it that pass through the circle. The share of people walking hit on it, under the map, counts a crash as on it when the page placed it on one of its blocks or at one of their corners.</p></details>
       <details><summary>After dark</summary>
         <p>Between sunset and sunrise in Los Angeles on that date, worked out from the date to within a few minutes of the published times. Dusk after sunset and dawn before sunrise count as after dark. A police report or a crash goes by the time it happened, as the report gives it.</p></details>
       <details><summary>Streets</summary>
@@ -476,7 +461,6 @@
           <li><a href="https://data.lacity.org/d/k7nn-b2ep">LAPD NIBRS Offenses Dataset</a>, Los Angeles Police Department via data.lacity.org</li>
           <li><a href="https://data.lacity.org/d/xjgu-z4ju">LAPD Calls for Service 2024 to Present</a>, Los Angeles Police Department via data.lacity.org</li>
           <li><a href="https://data.ca.gov/dataset/ccrs">California Crash Reporting System (CCRS)</a>, California Highway Patrol via data.ca.gov: crashes, and the people walking hurt in them</li>
-          <li><a href="https://www.arcgis.com/home/item.html?id=aaf35cd59072415b887325db1a2410cc">High Injury Network (2024)</a>, LADOT via LA GeoHub, from the <a href="https://ladot.lacity.gov/sites/default/files/documents/la-vz-safety-study-2024.pdf">LA Vision Zero Safety Study</a></li>
           <li><a href="https://www.arcgis.com/home/item.html?id=924f1b2e8df642f38a6dcbcf3c7b1709">LAPD Reporting Districts</a>, LAPD via LA GeoHub: the districts calls are counted in, and which of two places a crash is at</li>
           <li><a href="https://geohub.lacity.org/datasets/d3cd48afaacd4913b923fd98c6591276">Streets (Centerline)</a>, City of Los Angeles GeoHub: the streets, their names, house numbers and intersections</li>
           <li><a href="https://www.arcgis.com/home/item.html?id=d6c55385a0e749519f238b77135eafac">LA Times Neighborhood Boundaries</a>, Los Angeles Times via LA GeoHub (CC BY 4.0): the neighborhood outlines on the map</li>
@@ -536,7 +520,7 @@ document.addEventListener('click',e=>{ const a=e.target.closest('a[href^="#"]'),
 
 // ---------- chip groups: one pressed per group, or any number with data-multi ----------
 // the map's layers (data-layer chips), and the time of day the card and the dots count
-const layers={hin:true, people:true, drugs:false, cars:false, hit:false, calls:false};
+const layers={people:true, drugs:false, cars:false, hit:false, calls:false};
 let walkWhen='any', range='all';   // the time of day and the dates picked
 $$('.chips').forEach(g=>{
   const multi=g.hasAttribute('data-multi');
@@ -570,11 +554,11 @@ const tileBox=H('div',{className:'tiles'}), tileSvg=S('svg',{'aria-hidden':'true
 const svg=S('svg',{role:'img','aria-label':'Map of Los Angeles\' neighborhoods and streets'});
 wrap.insertBefore(svg, wrap.firstChild); wrap.insertBefore(tileBox, svg.nextSibling);   // images over the lines (see .tiles)
 // every layer sits in a group that turns about the view's center by rot (radians, clockwise); 0 is north up.
-// gNear holds what only shows zoomed in: the streets, the High Injury Network, police reports at the places LAPD gives
+// gNear holds what only shows zoomed in: the streets, police reports at the places LAPD gives
 // (car break-ins, drug offenses, violence and robbery), people walking hit and, on top, the card's circle
 const gRotT=S('g',{},tileSvg), gTiles=S('g',{},gRotT), gRot=S('g',{},svg);
 const gHood=S('g',{class:'hoods'},gRot), gDist=S('g',{class:'dists'},gRot), gStreet=S('g',{},gRot), gNear=S('g',{},gRot);
-const gBlk=S('g',{},gNear), gHin=S('g',{},gNear), gCars=S('g',{},gNear), gDrugs=S('g',{},gNear), gPeople=S('g',{},gNear), gCrash=S('g',{},gNear), gSpot=S('g',{},gNear);
+const gBlk=S('g',{},gNear), gCars=S('g',{},gNear), gDrugs=S('g',{},gNear), gPeople=S('g',{},gNear), gCrash=S('g',{},gNear), gSpot=S('g',{},gNear);
 const gStreetLine=S('g',{},gRot), gDistSel=S('g',{},gRot), gYou=S('g',{},gRot), gHit=S('g',{},gRot);
 let vb={x:(LX0+LX1)/2, y:(LY0+LY1)/2, w:LX1-LX0, h:0}, rot=0;
 const north=$('#znorth'), turnNorm=a=>Math.atan2(Math.sin(a),Math.cos(a));
@@ -685,10 +669,9 @@ function loadCell(key){
     cell.ox=ox; cell.oy=oy;
     cell.b.forEach(b=>{ b.ox=ox; b.oy=oy; b.d=b.g.map(ln=>{ let s=''; for(let i=0;i<ln.length;i+=2) s+=(i?'L':'M')+(ln[i]+ox)+','+(ln[i+1]+oy); return s; }).join('');
       S('path',{d:b.d,class:'blk'},gBlk);
-      if(b.hin) S('path',{d:b.d,class:'hinl'},gHin);
       const h=S('path',{d:b.d,class:'hit','aria-label':blockName(b)},gHit);
       h.addEventListener('click',e=>{ if(dragged) return; hideTip(); const p=toMap(e); setSpot(p.x,p.y,{b}); });
-      h.addEventListener('pointermove',e=>{ if(e.pointerType==='mouse') showTip(e,`<b>${esc(blockName(b))}</b>${b.x.length?'<br>'+esc(between(b)):''}${b.hin?'<br>On the High Injury Network':''}`); });
+      h.addEventListener('pointermove',e=>{ if(e.pointerType==='mouse') showTip(e,`<b>${esc(blockName(b))}</b>${b.x.length?'<br>'+esc(between(b)):''}`); });
       h.addEventListener('pointerleave',hideTip); });
     // an intersection: its place and the streets that meet there, busiest first
     cell.i=(cell.i||[]).map(([x,y,...n])=>({x:x+ox,y:y+oy,n}));
@@ -724,7 +707,7 @@ function drawWalk(cell){ const P=META.police;
 function setRange(k){ range=k; redrawWalk(); shadeHoods(); shadeDists(); if(spot) fillWalk(); legendKey=''; legend(); }
 $('#dates').addEventListener('change',e=>setRange(e.target.value));
 function redrawWalk(){ gPeople.innerHTML=gDrugs.innerHTML=gCars.innerHTML=gCrash.innerHTML=''; loadedCells().forEach(drawWalk); }
-function applyLayers(){ [[gHin,'hin'],[gPeople,'people'],[gDrugs,'drugs'],[gCars,'cars'],[gCrash,'hit'],[gDist,'calls']].forEach(([g,k])=>g.style.display=layers[k]?'':'none');
+function applyLayers(){ [[gPeople,'people'],[gDrugs,'drugs'],[gCars,'cars'],[gCrash,'hit'],[gDist,'calls']].forEach(([g,k])=>g.style.display=layers[k]?'':'none');
   gHood.classList.toggle('plain',layers.calls); if(layers.calls) loadDistricts().then(legend,()=>{}); }
 
 /* ============ LAPD's reporting districts (districts.json, analyze_la.py): the calls to police in each, loaded with the
@@ -849,7 +832,6 @@ const rangeLabel=k=>k==='all'?`Since ${monYr(META.police.start)}`:k==='month'?`L
 // a report's or a call's half hour at the time of day picked (0-47 daylight, 48-95 after dark, 96 not known)
 const whenOk=hh=>walkWhen==='any'||(walkWhen==='day'?hh<48:hh>=48&&hh<96);
 const listTxt=a=>a.length<2?a.join(''):a.slice(0,-1).join(', ')+' and '+a[a.length-1];
-const INFO='<a class="info" href="#hin" aria-label="What is the High Injury Network?" title="What is the High Injury Network?">?</a>';
 const whenTxt=()=>walkWhen==='day'?', in daylight':walkWhen==='dark'?', after dark':'';
 // a bar per hour of the day, each a stack of [count, color] from the bottom, with the hours under it
 function hourChart(title, byH, label){ const tot=h=>h.reduce((s,v)=>s+v[0],0), mx=Math.max(1,...byH.map(tot));
@@ -972,12 +954,7 @@ async function fillWalk(){
   // hurt isn't shown for a circle: so few people that it could point to someone
   const C=META.crashes, cyrs=`${rangeTxt('crashes')}${whenTxt()}`, [cFrom,cTo]=rangeDates('crashes');
   const hits=around.flatMap(c=>c.x).filter(x=>far(x.x,x.y)<=R&&hitWhen(x)), nHit=hits.reduce((s,x)=>s+x.n,0);
-  const hinSeen=new Map(); around.flatMap(c=>c.b).filter(b=>b.hin&&blockDist(b,sx,sy)<=R).forEach(b=>{ const n=META.names[b.s]; if(!hinSeen.has(base(n))) hinSeen.set(base(n),n); });
-  const hinNames=[...hinSeen.values()].sort();
-  const hinTxt=hinNames.length?`${esc(listTxt(hinNames))}, which ${hinNames.length===1?'passes':'pass'} through the circle, ${hinNames.length===1?'is':'are'} on the High Injury <span class="nb">Network${INFO}.</span>`
-    :`No street in the circle is on the High Injury <span class="nb">Network${INFO}.</span>`;
-  let hc=`<div class="glance"><div><span class="v">${num(nHit)}</span> <span class="k">${nHit===1?'person':'people'} walking hit ${cyrs}</span></div></div>
-    <div class="sm-note">${hinTxt}</div>${nHit?rank('hit',nHit,'people walking hit'):''}`;
+  let hc=`<div class="glance"><div><span class="v">${num(nHit)}</span> <span class="k">${nHit===1?'person':'people'} walking hit ${cyrs}</span></div></div>${nHit?rank('hit',nHit,'people walking hit'):''}`;
   if(nHit){
     const byH=new Array(24).fill(0); hits.forEach(x=>{ byH[Math.floor(x.t%48/2)]+=x.n; });
     hc+=hourChart('What time of day they were hit',byH.map(n=>[[n,'var(--hit)']]),'People walking hit by the hour');
@@ -1207,7 +1184,6 @@ function legend(){ const near=vb.w*PX_M<=SHOW_M, key=[near,!!spot,!!fix,!!HOODS,
   if(near&&META&&spot) item(`width:14px;height:14px;border-radius:50%;background:color-mix(in oklab,var(--walk) 10%,var(--map-bg));border:1.5px dashed var(--map-sel)`,'The card counts inside this circle');
   const bg='box-shadow:0 0 0 3px var(--map-bg)', disc=(c,sq)=>`width:12px;height:12px;border-radius:${sq?1:6}px;background:${c};opacity:.8;${bg}`;
   if(near&&META){
-    if(layers.hin) item(`height:6px;border-radius:3px;background:var(--walk);${bg}`,'High Injury Network').insertAdjacentHTML('beforeend',INFO);
     if(layers.people) item(disc('var(--people)'),'Violence & robbery reports');
     if(layers.drugs) item(disc('var(--drugs)',1),'Drug offense reports');
     if(layers.cars) item(`width:13px;height:13px;border-radius:50%;border:3px solid var(--cars);background:var(--map-bg);${bg}`,'Car break-ins');
@@ -1320,9 +1296,8 @@ fetch('data/index.json').then(r=>{ if(!r.ok) throw new Error(r.status); return r
   if(!isNaN(bd)) $('#upd').textContent=`Updated ${bd.toLocaleDateString('en-US',{month:'short',day:'numeric',...(bd.getFullYear()!==new Date().getFullYear()?{year:'numeric'}:{})})}`;
   $('#mPol').textContent=` This page has ${num(m.police.n)} reports, from ${fmtD(m.police.start)} to ${fmtD(m.police.end)}; it's rebuilt every week.`;
   $('#mCalls').textContent=` This page has ${num(m.calls.n)} calls, from ${fmtD(m.calls.start)} to ${fmtD(m.calls.end)}, in ${num(m.calls.districts)} districts.`;
-  const C=m.crashes, H=m.hin;
+  const C=m.crashes;
   $('#mHit').textContent=` This page has ${num(C.n)} people walking hit, from ${fmtD(C.start)} to ${fmtD(C.end)}: the ${Math.floor(C.placed*100)}% of those off the freeways it could place. The rest (the streets weren't found, or meet in more than one place in the same district) aren't on the map or the card. Checked against LAPD's own crash map for January to March 2025, before LAPD stopped publishing it, three in four land within 50 m of LAPD's point.`;
-  $('#hinShare').textContent=` It's ${Math.round(H.share_km*100)}% of the City's streets, but ${Math.round(H.share_hit*100)}% of the people walking hit ${sinceTxt(C)} were on it or at its corners.`;
   $('#dates').innerHTML=m.ranges.map(r=>`<option value="${r.k}">${esc(rangeLabel(r.k))}</option>`).join('');
   shadeHoods(); legendKey=''; showBlocks(); renderSpot(); buildSummary();
   goHash();

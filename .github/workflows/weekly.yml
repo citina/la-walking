@@ -49,7 +49,7 @@ jobs:
             echo "no la-downloads release yet: downloading everything"
           fi
 
-      - name: Fetch the reports, calls, crashes, streets, districts and the High Injury Network
+      - name: Fetch the reports, calls, crashes, streets and districts
         id: fetch
         run: python3 -u fetch_la.py | tee fetch.log
 

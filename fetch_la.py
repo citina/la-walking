@@ -4,8 +4,6 @@
 - centerlines.json: the City of Los Angeles street centerlines, with address ranges per side and the intersection at
   each end (LA GeoHub, Street_Information MapServer layer 36, ~85k segments), the same download as LA Street Rules'
   (ticket-clock/fetch_city.py). They barely change, so they're refetched once the copy is four weeks old.
-- hin.json: the City's High Injury Network for people walking (LADOT's 2024 Vision Zero Safety Study, on LA GeoHub),
-  about 400 lines. It changes only when LADOT redoes the study, so it's refetched once the copy is four weeks old.
 - districts.json: LAPD's reporting districts (LA GeoHub), about 1,200 outlines, to tell apart two places where the same
   two streets meet when placing a crash, and for the calls to police. Refetched once the copy is four weeks old.
 - police/YYYY-MM.csv: LAPD's NIBRS offenses (data.lacity.org k7nn-b2ep) of the kinds the page shows (POLICE_CODES),
@@ -36,11 +34,9 @@ from pathlib import Path
 RAW = Path(__file__).resolve().parent / "data" / "raw"
 STREETS = "https://maps.lacity.org/lahub/rest/services/Street_Information/MapServer/36/query"
 FIELDS = "ASSETID,INT_ID_FROM,INT_ID_TO,ADLF,ADLT,ADRF,ADRT,ZIP_L,ZIP_R,TDIR,STNAME,STSFX,SFXDIR,STATUS,Street_Designation"
-STREETS_DAYS = 28   # the centerlines and the High Injury Network are refetched once the copy is this old
+STREETS_DAYS = 28   # the centerlines and the reporting districts are refetched once the copy is this old
 DISTRICTS = ("https://services5.arcgis.com/7nsPwEMP38bSkCjy/arcgis/rest/services/LAPD_Reporting_District/"
              "FeatureServer/0/query")
-HIN = ("https://services1.arcgis.com/tp9wqSVX1AitKgjd/arcgis/rest/services/"
-       "LA_Vision_Zero_High_Injury_Network_(2024)_Prioritization_Data_view/FeatureServer/4/query")   # 4: people walking
 POLICE = "https://data.lacity.org/resource/k7nn-b2ep.csv"
 POLICE_COLS = "uniquenibrno,caseno,date_occ,time_occ,nibr_code,nibr_description,premis_desc,domestic_violence_crime,hndrdth_lat,hndrdth_lon"
 POLICE_FROM = dt.date(2025, 1, 1)   # LAPD moved to NIBRS on 2024-03-07; its new records are complete from 2025
@@ -153,18 +149,9 @@ def main():
     else:
         print(f"centerlines.json: keeping the copy from {fetched['centerlines.json']}")
 
-    # ---- the High Injury Network for people walking, in one request ----
-    def fetch_hin(path):
-        page = get_json(HIN, {"where": "1=1", "outFields": "str_name", "outSR": "4326", "f": "geojson"}, timeout=120)
-        if not page.get("features") or page.get("properties", {}).get("exceededTransferLimit"):
-            raise ValueError(f"expected every line in one answer, got {len(page.get('features', []))}")
-        write(path, json.dumps(page, separators=(",", ":")).encode())
-        return f"hin.json {len(page['features'])} lines"
-
-    if age("hin.json") >= STREETS_DAYS or not (RAW / "hin.json").exists():
-        refresh("hin.json", fetch_hin)
-    else:
-        print(f"hin.json: keeping the copy from {fetched['hin.json']}")
+    # the High Injury Network left the page on 2026-11-14: drop the copy an earlier run kept
+    (RAW / "hin.json").unlink(missing_ok=True)
+    fetched.pop("hin.json", None)
 
     # ---- LAPD's reporting districts, in one request ----
     def fetch_districts(path):
