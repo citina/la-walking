@@ -519,8 +519,8 @@ function showTip(e, html){ tip.innerHTML=html; tip.style.left=tip.style.top='0px
   tip.style.left=Math.max(8,Math.min(x,innerWidth-r.width-8))+'px'; tip.style.top=Math.max(8,Math.min(y,innerHeight-r.height-8))+'px'; }
 function hideTip(){ tip.hidden=true; }
 const stacked=()=>matchMedia('(max-width:1000px)').matches, still=()=>matchMedia('(prefers-reduced-motion: reduce)').matches;
-// answerOn: after a search on a phone, the message above the map gives the card's short answer (fillWalk), since the
-// card is below the map
+// answerOn: after a search or "Near me" on a phone, the message above the map gives the card's short answer (fillWalk),
+// since the card is below the map
 let answerOn=false;
 const msg=html=>{ answerOn=false; $('#findMsg').innerHTML=html; };
 
@@ -1018,8 +1018,8 @@ async function fillWalk(){
   kindRows($('#pRows'),pRows,{title:`What time of day they happened${whenTxt()}`,one:'report',many:'reports',when:'it happened',where:within});
   if(qRows.length) kindRows($('#qRows'),qRows,{title:`What time of day the calls came in${whenTxt()}`,one:'call',many:'calls',when:'it came in',where:'in this district'});
   drawDistSel();
-  // after a search on a phone, the short answer above the map, with a link down to the card
-  if(spot.fromSearch&&stacked()){ msg(`<b>${esc(spot.name||spot.title)}</b>: ${pAll?num(pAll):'no'} police report${pAll===1?'':'s'} and ${nHit?num(nHit):'no'} ${nHit===1?'person':'people'} walking hit within ${m} m ${yrs} · <a href="#panel">See the card ↓</a>`); answerOn=true; }
+  // after a search or "Near me" on a phone, the short answer above the map, with a link down to the card
+  if((spot.fromSearch||spot.you)&&stacked()){ msg(`<b>${esc(spot.name||spot.title)}</b>: ${pAll?num(pAll):'no'} police report${pAll===1?'':'s'} and ${nHit?num(nHit):'no'} ${nHit===1?'person':'people'} walking hit within ${m} m ${yrs} · <a href="#panel">See the card ↓</a>`); answerOn=true; }
 }
 
 /* ============ neighborhoods (hoods.json, the LA Times' boundaries, from LA Street Rules): picked on the map while the
@@ -1186,7 +1186,9 @@ $('#locBtn').addEventListener('click',()=>{
     fix=toXY(lat,lon); pickHood(-1); jumpTo(fix[0],fix[1],spotView());
     // inside the box around the city but in none of its neighborhoods: in another city, like Santa Monica or Beverly Hills
     const outside=HOODS&&!hoodAt(fix[0],fix[1]);
-    if(!outside&&META) setSpot(fix[0],fix[1],{you:true});
+    // on a phone the map comes into view, not the card under it (as after a search)
+    if(!outside&&META) setSpot(fix[0],fix[1],{you:true},false);
+    showMap();
     msg(outside?'You\'re just outside the City of Los Angeles. This page only covers the City, where LAPD takes the reports; you can still search for a street there.'
       :!META?'The map shows the streets around your location.':`The card counts what's within ${M()} m of your location.`);
   }, err=>{ btn.disabled=false;
