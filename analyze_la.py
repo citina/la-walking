@@ -48,8 +48,13 @@ it's showing:
                       hit); and for each size of the card's circle, the counts at each percent of the intersections
                       (circle_q), for the card's ranks
   districts.json      loads with the first spot or the calls layer: LAPD's reporting districts, as {d: [district, km2,
-                      outlines (a first point in zoom-17 pixels, then the steps)], r: its calls in each date range}
+                      outlines (a first point in zoom-17 pixels, then the steps)], r: its calls in each date range, k:
+                      those after dark, p: the point inside it where its ring goes, in zoom-17 pixels}
   calls/{district}.json  loads for the spot's district: its calls, each one number: (day * 96 + half hour) * 4 + group
+  grid.json           loads while the map is zoomed out (index.json's grid is its square size): per layer (people,
+                      drugs, cars, hit, calls), each square of the map with any in it, as its place (steps from the
+                      square before, from the first square o), then per date range its counts in daylight, after dark
+                      and (police reports only) with no time known, trailing zeros left off
   streets.json        loads on the first search: for each street name, first every cell holding one of its blocks (to
                       outline the street), then its hundred blocks, one per place, as [hundred / 100 (-1 without house
                       numbers), cell number, the block nearest its middle (its place in that cell's list)], plus the
@@ -890,10 +895,61 @@ def encode(ring):
     return out
 
 
-districts_out = dict(d=[], r=[])
+def pole(poly, tol):
+    """The point inside a polygon ([outer ring, holes...]) farthest from its edges, to within tol, found as Mapbox's
+    polylabel does: squares over the polygon, the most promising split first. A district's ring goes there, since the
+    middle of an odd-shaped district can fall outside it."""
+    edges = [(a, b) for r in poly for a, b in zip(r, r[1:] + r[:1]) if a != b]
+
+    def dist(x, y):   # to the nearest edge, negative outside
+        inside, best = False, math.inf
+        for (ax, ay), (bx, by) in edges:
+            if (ay > y) != (by > y) and x < (bx - ax) * (y - ay) / (by - ay) + ax:
+                inside = not inside
+            dx, dy = bx - ax, by - ay
+            t = max(0.0, min(1.0, ((x - ax) * dx + (y - ay) * dy) / (dx * dx + dy * dy)))
+            best = min(best, (ax + t * dx - x) ** 2 + (ay + t * dy - y) ** 2)
+        return math.sqrt(best) if inside else -math.sqrt(best)
+
+    def square(x, y, h):   # (the farthest any point in it can be from the edges, its own, x, y, half its side)
+        d = dist(x, y)
+        return (d + h * math.sqrt(2), d, x, y, h)
+
+    xs, ys = [p[0] for p in poly[0]], [p[1] for p in poly[0]]
+    x0, y0, x1, y1 = min(xs), min(ys), max(xs), max(ys)
+    h = min(x1 - x0, y1 - y0) / 2
+    # to start, the better of the outline's centroid and the middle of its box
+    pq = [(p, q, p[0] * q[1] - q[0] * p[1]) for p, q in zip(poly[0], poly[0][1:] + poly[0][:1])]
+    a = sum(w for _, _, w in pq) / 2
+    mid = (sum((p[0] + q[0]) * w for p, q, w in pq) / (6 * a), sum((p[1] + q[1]) * w for p, q, w in pq) / (6 * a)) if a else (x0, y0)
+    best = max(square(*mid, 0), square((x0 + x1) / 2, (y0 + y1) / 2, 0))
+    if not h:
+        return best[2], best[3]
+    todo = sorted(square(x0 + h * (2 * i + 1), y0 + h * (2 * j + 1), h)
+                  for i in range(math.ceil((x1 - x0) / (2 * h))) for j in range(math.ceil((y1 - y0) / (2 * h))))
+    while todo:
+        c = todo.pop()   # the most promising
+        if c[1] > best[1]:
+            best = c
+        if c[0] - best[1] <= tol:
+            continue
+        h = c[4] / 2
+        for x, y in ((c[2] - h, c[3] - h), (c[2] + h, c[3] - h), (c[2] - h, c[3] + h), (c[2] + h, c[3] + h)):
+            bisect.insort(todo, square(x, y, h))
+    return best[2], best[3]
+
+
+districts_out = dict(d=[], r=[], k=[], p=[])
+dist_at = {}   # district -> the point where its ring goes, in zoom-17 pixels
 for d in sorted(dist_geo):
     rings = [encode(r) for poly in dist_geo[d] for r in poly]
     districts_out["d"].append([d, round(dist_km2[d], 2), *[r for r in rings if len(r) >= 6]])
+    # in its biggest part, simplified as the page draws it
+    big = max(dist_geo[d], key=lambda p: ring_area(p[0]) - sum(ring_area(h) for h in p[1:]))
+    big = [simplify(r, 3) for r in big]
+    xs, ys = [p[0] for p in big[0]], [p[1] for p in big[0]]
+    dist_at[d] = [round(v) for v in pole(big, max(1.0, min(max(xs) - min(xs), max(ys) - min(ys)) / 40))]
+    districts_out["p"].append(dist_at[d])
 
 # ---------- the page's date ranges: since the window starts, the last 12 months, 90 days and 30 days, and the last
 # full calendar month; each dataset's counted back from its own last day ----------
@@ -932,11 +988,56 @@ for h, day, n in hood_crashes:
     for k in range_keys:
         if inr("crashes", k, day):
             hood_range[k][h][3] += n
-# per district and range: its calls, for the layer's shading
+# per district and range: its calls (r), and those after dark (k), for the size of its ring on the map
 for d in sorted(dist_geo):
     ev = q_at[d]["e"] if d in q_at else []
     districts_out["r"].append([sum(inr("calls", k, code // len(CALL_GROUPS) // 96) for code in ev) for k in range_keys])
+    districts_out["k"].append([sum(inr("calls", k, code // len(CALL_GROUPS) // 96) and code // len(CALL_GROUPS) % 96 >= 48 for code in ev)
+                               for k in range_keys])
 print(f"date ranges: {', '.join(range_keys)}; last month {month[0]:%B %Y}")
+
+# ---------- zoomed out: each layer added up in squares of the map ----------
+# grid.json: per layer, every base square (GRID zoom-17 pixels on a side, about 250 m, counted from the map's corner) with
+# any in it, as its place (below), then per date range its counts in daylight, after dark and (police reports only) with
+# no time known, trailing zeros left off. The page adds them up into bigger squares as the map zooms out. Calls count
+# at their district's ring.
+GRID = 256
+grid = {k: collections.defaultdict(lambda: [0] * (3 * len(range_keys))) for k in ("people", "drugs", "cars")}
+grid.update({k: collections.defaultdict(lambda: [0] * (2 * len(range_keys))) for k in ("hit", "calls")})
+for (cx, cy), c in cells.items():
+    for r in c["r"]:
+        s = ((cx * CELL + r["p"][0]) // GRID, (cy * CELL + r["p"][1]) // GRID)
+        for code in r["e"]:
+            kind, hh, day = code % len(KINDS), code // len(KINDS) % (NO_HH + 1), code // len(KINDS) // (NO_HH + 1)
+            row = grid["people" if kind in PEOPLE else "drugs" if kind in DRUGS else "cars"][s]
+            for i, k in enumerate(range_keys):
+                if inr("police", k, day):
+                    row[3 * i + (2 if hh == NO_HH else hh >= 48)] += 1
+    for x, y, hh, n, _, day in c["x"]:
+        row = grid["hit"][((cx * CELL + x) // GRID, (cy * CELL + y) // GRID)]
+        for i, k in enumerate(range_keys):
+            if inr("crashes", k, day):
+                row[2 * i + (hh >= 48)] += n
+for d, v in q_at.items():
+    row = grid["calls"][(dist_at[d][0] // GRID, dist_at[d][1] // GRID)]
+    for code in v["e"]:
+        day, hh = code // len(CALL_GROUPS) // 96, code // len(CALL_GROUPS) % 96
+        for i, k in enumerate(range_keys):
+            if inr("calls", k, day):
+                row[2 * i + (hh >= 48)] += 1
+# the squares go down each column of the map, then on to the next: x is the step from the square before, and y the step
+# down from it in the same column, or from the top in a new one (a third smaller gzipped than plain x and y)
+g0 = [min(s[0] for sq in grid.values() for s in sq), min(s[1] for sq in grid.values() for s in sq)]
+grid_out = dict(g=GRID, o=g0, ranges=range_keys)
+for layer, sq in grid.items():
+    rows, px, py = [], 0, 0
+    for (x, y), v in sorted(sq.items()):
+        if any(v):
+            x, y = x - g0[0], y - g0[1]
+            rows.append([x - px, y - py if x == px else y, *v[:max(i + 1 for i, n in enumerate(v) if n)]])
+            px, py = x, y
+    grid_out[layer] = rows
+print(f"zoomed out: squares of {GRID * PX_M:.0f} m with any in them: " + ", ".join(f"{layer} {len(grid_out[layer]):,}" for layer in grid))
 
 # ---------- ranks: the card's circle against the same circle around every intersection ----------
 # For each intersection, the report places within the biggest circle, nearest first, with running totals; each smaller
@@ -1059,7 +1160,7 @@ for si, bs in placed.items():
     streets[si] = [sorted({cell_ix[b[3]] for b in bs})] + out
     n_groups += len(out)
 print(f"search: {len(names):,} street names, {n_groups:,} hundred blocks")
-meta = dict(built=str(datetime.now(LA_TZ).date()), cell=CELL, cells=cell_keys, names=names,
+meta = dict(built=str(datetime.now(LA_TZ).date()), cell=CELL, grid=GRID, cells=cell_keys, names=names,
             blocks=sum(len(c["b"]) for c in cells.values()), intersections=len(corners),
             police=dict(start=str(p_start), end=str(p_end), n=n_police, kinds=[k for k, _ in KINDS], per_kind=n_kind,
                         people=PEOPLE, drugs=DRUGS, cars=CARS, no_time=no_time, left=dict(left)),
@@ -1071,6 +1172,8 @@ meta = dict(built=str(datetime.now(LA_TZ).date()), cell=CELL, cells=cell_keys, n
 (OUT / "index.json").write_text(json.dumps(meta, separators=(",", ":")))
 (OUT / "streets.json").write_text(json.dumps(streets, separators=(",", ":")))
 (OUT / "districts.json").write_text(json.dumps(districts_out, separators=(",", ":")))
+(OUT / "grid.json").write_text(json.dumps(grid_out, separators=(",", ":")))
+print(f"grid.json {(OUT / 'grid.json').stat().st_size / 1024:.0f} KB")
 (OUT / "calls").mkdir()
 for d, v in q_at.items():
     (OUT / "calls" / f"{d}.json").write_text(json.dumps(sorted(v["e"]), separators=(",", ":")))
