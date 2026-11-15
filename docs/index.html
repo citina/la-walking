@@ -2,6 +2,23 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>LA Walking</title>
+<meta name="description" content="Pick a spot in Los Angeles to see what gets reported to police around it, and how often people walking are hit by cars there. Updated weekly.">
+<!-- the preview a shared link gets (iMessage, Slack, LinkedIn); og.png is a 1200 × 630 screenshot of the page -->
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="LA Walking">
+<meta property="og:title" content="LA Walking">
+<meta property="og:description" content="Pick a spot in Los Angeles to see what gets reported to police around it, and how often people walking are hit by cars there. Updated weekly.">
+<meta property="og:url" content="https://citina.github.io/la-walking/">
+<meta property="og:image" content="https://citina.github.io/la-walking/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="A map of Los Angeles streets with dots for police reports around a spot">
+<meta name="twitter:card" content="summary_large_image">
+<!-- the browser's bar in the page's background color (--plane), and the tab's icon: the map's dashed circle around a spot,
+     in the walking color (--walk) -->
+<meta name="theme-color" media="(prefers-color-scheme: light)" content="#f2f2ef">
+<meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0d0d0d">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23d4502a'/%3E%3Ccircle cx='16' cy='16' r='9.5' fill='none' stroke='%23fcfcfb' stroke-width='2.8' stroke-dasharray='6 3.95'/%3E%3Ccircle cx='16' cy='16' r='3.5' fill='%23fcfcfb'/%3E%3C/svg%3E">
 <!-- Hand-written page (no build step). Its data in data/ is made by analyze_la.py; see PLAN.md for what fills each part and what's still to come. -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -518,12 +535,19 @@ const stacked=()=>matchMedia('(max-width:1000px)').matches, still=()=>matchMedia
 let answerOn=false;
 const msg=html=>{ answerOn=false; $('#findMsg').innerHTML=html; };
 
-// ---------- the link: the spot picked and the circle's size (#@34.05223,-118.24368/250m), except for your own location ----------
+// ---------- the link: the spot picked and the circle's size (#@34.05223,-118.24368/250m), then the dates and the time of
+// day where they aren't the first ones (…/250m/90d/dark), so the card opens with the same counts; never your own location ----------
 // spot: the middle of the card's circle ({x, y, b: the block it's on or nearest, name, title, sub, you})
 let spot=null;
-function setHash(){ try{ if(spot&&!spot.you){ const [lat,lon]=toLatLon(spot.x,spot.y); history.replaceState(null,'',`#@${lat.toFixed(5)},${lon.toFixed(5)}/${radius}m`); }
+// with no spot picked (or your location as the spot) the link stays bare: there's no card to share, and the map's view
+// isn't in the link either
+function setHash(){ try{ if(spot&&!spot.you){ const [lat,lon]=toLatLon(spot.x,spot.y); history.replaceState(null,'',`#@${lat.toFixed(5)},${lon.toFixed(5)}/${radius}m${range!=='all'?'/'+range:''}${walkWhen!=='any'?'/'+walkWhen:''}`); }
   else if(location.hash) history.replaceState(null,'',location.pathname+location.search); }catch(e){} }
 addEventListener('hashchange',()=>goHash());
+// other dates or another time of day change the link too: these run after the menu's and the chips' own listeners have
+// set them, as the event goes up to the page
+document.addEventListener('change',e=>{ if(e.target.id==='dates') setHash(); });
+document.addEventListener('click',e=>{ if(e.target.closest('.chips[data-group="when"] .chip')) setHash(); });
 // links to a part of the page (About, "?") scroll there and leave the link to the spot as it is
 document.addEventListener('click',e=>{ const a=e.target.closest('a[href^="#"]'), t=a&&document.getElementById(a.getAttribute('href').slice(1)); if(!t) return;
   e.preventDefault(); t.scrollIntoView({block:'start',behavior:still()?'auto':'smooth'}); });
@@ -861,10 +885,13 @@ function setSpot(x, y, o, scroll=true){
   spot={x,y,...o};
   renderSpot(); legend(); setHash(); if(scroll) toCard(); if(!o.sum) cardTop();
 }
-// the place in the link
-function goHash(){ const h=decodeURIComponent(location.hash.slice(1)); if(h[0]!=='@'||!META) return;
-  const [p,r]=h.slice(1).split('/'), rad=parseInt(r); if(okRadius(rad)&&rad!==radius) setRadius(rad,false);
+// the place in the link, then its dates and time of day, as if picked: a link that doesn't name them (as ones made before
+// they went in) gets the first ones, as does a dates value the menu doesn't have. It runs once index.json has filled the menu
+function goHash(){ let h=''; try{ h=decodeURIComponent(location.hash.slice(1)); }catch(e){} if(h[0]!=='@'||!META) return;
+  const [p,r,...more]=h.slice(1).split('/'), rad=parseInt(r); if(okRadius(rad)&&rad!==radius) setRadius(rad,false);
   const [lat,lon]=p.split(',').map(Number); if(!isFinite(lat)||!isFinite(lon)||lat<LA[1]||lat>LA[3]||lon<LA[0]||lon>LA[2]) return;
+  const k=more.find(v=>[...$('#dates').options].some(o=>o.value===v))||'all', w=more.find(v=>v==='day'||v==='dark')||'any';
+  if(k!==range){ $('#dates').value=k; setRange(k); } if(w!==walkWhen) $(`.chips[data-group="when"] .chip[data-v="${w}"]`).click();
   const [x,y]=toXY(lat,lon); if(spot&&Math.hypot(spot.x-x,spot.y-y)<2) return;
   pickHood(-1); jumpTo(x,y,spotView()); setSpot(x,y,{},false); }
 // the circle: 100 to 500 m (the slider), 200 m to start; remembered on this device, or set by a link
