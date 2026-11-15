@@ -1077,7 +1077,9 @@ print(f"  ranks: at 200 m, half the intersections have {circle_q[200]['people'][
       f"the top 1% at least {circle_q[200]['hit'][98]:,}")
 
 # ---------- the summary: the City as a whole ----------
-# around the places people go: what's within PLACE_M, and the share of intersections with fewer (as the card's ranks)
+# around the places people go: what's within PLACE_M, and the share of intersections with fewer (as the card's ranks).
+# A place: [name, x, y, people walking hit, violence and robbery, drug offenses, their three ranks, car break-ins, its
+# rank]; car break-ins came later, at the end, so the page reads an older index.json's places as before
 ranked = [sorted(c[j] for c in circ_place) for j in range(4)]
 rank_of = lambda j, v: 100 * bisect.bisect_left(ranked[j], v) // len(circ_place)
 places = []
@@ -1091,8 +1093,9 @@ for name, lat, lon in PLACES:
                 if (px - x) ** 2 + (py - y) ** 2 <= r2:
                     v = [a + b for a, b in zip(v, w)]
     near_corner = min(corners, key=lambda n: (node_at[n][0] - x) ** 2 + (node_at[n][1] - y) ** 2)
-    places.append([name, round(x), round(y), v[3], v[0], v[1], rank_of(3, v[3]), rank_of(0, v[0]), rank_of(1, v[1])])
-    print(f"  {name}: near {' & '.join(nm for _, nm, _ in corners[near_corner][:2])}; hit {v[3]}, violence and robbery {v[0]:,}, drugs {v[1]:,}")
+    places.append([name, round(x), round(y), v[3], v[0], v[1], rank_of(3, v[3]), rank_of(0, v[0]), rank_of(1, v[1]), v[2], rank_of(2, v[2])])
+    print(f"  {name}: near {' & '.join(nm for _, nm, _ in corners[near_corner][:2])}; hit {v[3]}, violence and robbery {v[0]:,}, drugs {v[1]:,},"
+          f" car break-ins {v[2]:,}")
 # the intersections where the most people walking were hit (crashes placed there, not along a block): the top five, and
 # any tied with the fifth, ten at most
 by_corner = collections.Counter()

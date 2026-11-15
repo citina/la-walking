@@ -223,6 +223,9 @@
   .ptab .pv{display:block;font:15px "IBM Plex Mono",monospace}
   .ptab .pr{display:block;font-size:14px;color:var(--ink-2)}
   .ptab tr.on td{background:var(--well)}
+  /* on a phone the place and four counts fit in 343 px: a heading's longest word (VIOLENCE, OFFENSES) sets its column's
+     width, so the headings lose their letter spacing and the columns sit closer */
+  @media (max-width:560px){ .ptab th{letter-spacing:0;padding-left:6px} .ptab td.n{padding-left:6px} }
   .more{appearance:none;cursor:pointer;border:1px solid var(--edge);background:var(--surface);color:var(--ink);font:500 14px "Barlow",sans-serif;
         border-radius:999px;padding:5px 14px;min-height:34px;margin:12px 0 0}
   .hb{display:grid;grid-template-columns:1fr auto;gap:3px 12px;font-size:15px;line-height:1.35;margin:0 0 10px}
@@ -422,6 +425,7 @@
         <button class="chip sm" aria-pressed="true" data-v="0">People walking hit</button>
         <button class="chip sm" aria-pressed="false" data-v="1">Violence &amp; robbery</button>
         <button class="chip sm" aria-pressed="false" data-v="2">Drug offenses</button>
+        <button class="chip sm" aria-pressed="false" data-v="3">Car break-ins</button>
       </div>
       <table class="ptab" id="ptab"></table>
       <button class="more" id="pMore"></button>
@@ -1306,9 +1310,9 @@ function buildSummary(){
   const Z=META.summary; if(!Z) return;
   const C=META.crashes, P=META.police, Hs=Z.hit, n=Hs.n, killed=Hs.killed, hurt=Hs.ksi-Hs.killed;
   const act=Object.fromEntries(Hs.actions), inWalk=(act['Crossing in a crosswalk at an intersection']||0)+(act['Crossing in a mid-block crosswalk']||0);
-  const people=sum(Z.police.month.map(m=>m[1]+m[2]+m[3])), drugs=P.per_kind[P.drugs[0]];
+  const people=sum(Z.police.month.map(m=>m[1]+m[2]+m[3])), drugs=P.per_kind[P.drugs[0]], cars=P.per_kind[P.cars];
   $('#sumTitle').textContent=Hs.killed_dark*2>killed?'Most people walking killed by cars in LA were hit after dark':'When and where people walking were hit';
-  $('#sumLead').innerHTML=`From ${fmtD(C.start)} to ${fmtD(C.end)}, <b>${num(n)} people walking</b> were hit by cars in the City of Los Angeles, off the freeways; ${num(killed)} of them died and ${num(hurt)} more were badly hurt. From ${fmtD(P.start)} to ${fmtD(P.end)}, police took <b>${num(people)} reports of violence and robbery</b> in public places and ${num(drugs)} of drug offenses. Here's when, where and how.`;
+  $('#sumLead').innerHTML=`From ${fmtD(C.start)} to ${fmtD(C.end)}, <b>${num(n)} people walking</b> were hit by cars in the City of Los Angeles, off the freeways; ${num(killed)} of them died and ${num(hurt)} more were badly hurt. From ${fmtD(P.start)} to ${fmtD(P.end)}, police took <b>${num(people)} reports of violence and robbery</b> in public places, ${num(drugs)} of drug offenses and ${num(cars)} of car break-ins. Here's when, where and how.`;
   $('#sumStats').innerHTML=[[num(n),`people walking hit by cars ${sinceTxt(C)}`],[num(killed),`killed, and ${num(hurt)} badly hurt`],
     [pct(inWalk,n)+'%','were crossing in a crosswalk'],[pct(Hs.killed_dark,killed)+'%','of those killed were hit after dark']]
     .map(([v,k])=>`<div><span class="v">${v}</span><span class="k">${k}</span></div>`).join('');
@@ -1335,7 +1339,7 @@ function buildSummary(){
   const top=k=>{ const mx=Math.max(...Z.places.map(p=>p[k])), names=Z.places.filter(p=>p[k]===mx).map(p=>p[0]).sort((a,b)=>a.localeCompare(b));
     return `${esc(listTxt(names))} (${num(mx)}${names.length>1?' each':''})`; };
   $('#sumWhere').innerHTML=`<b>Around the places visitors go</b>, within ${Z.place_m} m (about ${num(Math.round(Z.place_m*3.28084/50)*50)} ft, a ${Math.round(Z.place_m/80)}-minute walk), ${sinceTxt(C)}.`
-    +` Most people walking hit: ${top(3)}. Most reports of violence and robbery: ${top(4)}. “Top 2%” means 98% of the City's ${num(Z.intersections)} intersections have fewer within the same distance. Tap a place to see it on the map and the card.`;
+    +` Most people walking hit: ${top(3)}. Most reports of violence and robbery: ${top(4)}.${placeCols(Z).includes(PCOL[3])?` Most car break-ins: ${top(9)}.`:''} “Top 2%” means 98% of the City's ${num(Z.intersections)} intersections have fewer within the same distance. Tap a place to see it on the map and the card.`;
   renderPlaces();
   const hoodList=(el,k,fmt)=>{ el.innerHTML=''; HOODS&&HOODS.map((h,i)=>[h.name,i,META.hood_stats[i]]).filter(([,,s])=>s&&s[0]>=10).sort((a,b)=>b[2][k]/b[2][0]-a[2][k]/a[2][0]).slice(0,5)
     .forEach(([h,j,s],i)=>{ const li=H('li',{},el); li.dataset.n=i+1; const b=H('button',{className:'plink',textContent:h},li); H('span',{className:'v',textContent:fmt(s[k]/s[0])},li);
@@ -1358,12 +1362,16 @@ function buildSummary(){
 }
 // the places table: sorted by the chips, the first ten (six on a phone) until "Show all"
 let placeSort=0, placeAll=false;
-const PCOL=[[3,6],[4,7],[5,8]];   // [count, rank] in each place: people walking hit, violence and robbery, drug offenses
+// [count, rank, heading] in each place: people walking hit, violence and robbery, drug offenses, car break-ins. Car
+// break-ins came later, at the end of each place: until the data has them, their column and chip stay out
+const PCOL=[[3,6,'People walking hit'],[4,7,'Violence &amp; robbery'],[5,8,'Drug offenses'],[9,10,'Car break-ins']];
+const placeCols=Z=>PCOL.filter(([v])=>Z.places.every(p=>typeof p[v]==='number'));
 function renderPlaces(){ const Z=META&&META.summary; if(!Z) return;
-  const [ci]=PCOL[placeSort], list=[...Z.places].sort((a,b)=>b[ci]-a[ci]||a[0].localeCompare(b[0])), first=matchMedia('(max-width:640px)').matches?6:10, shown=placeAll?list:list.slice(0,first);
+  const cols=placeCols(Z); $$('[data-group="psort"] .chip').forEach(b=>b.hidden=!cols.includes(PCOL[b.dataset.v]));
+  const [ci]=cols.includes(PCOL[placeSort])?PCOL[placeSort]:cols[0], list=[...Z.places].sort((a,b)=>b[ci]-a[ci]||a[0].localeCompare(b[0])), first=matchMedia('(max-width:640px)').matches?6:10, shown=placeAll?list:list.slice(0,first);
   const cell=(v,r)=>`<td class="n"><span class="pv">${num(v)}</span><span class="pr">${v&&r>=50?`top ${100-r}%`:''}</span></td>`;
-  $('#ptab').innerHTML=`<thead><tr><th>Place</th><th>People walking hit</th><th>Violence &amp; robbery</th><th>Drug offenses</th></tr></thead><tbody>${
-    shown.map(p=>`<tr><td><button class="plink" data-i="${Z.places.indexOf(p)}">${esc(p[0])}</button></td>${PCOL.map(([v,r])=>cell(p[v],p[r])).join('')}</tr>`).join('')}</tbody>`;
+  $('#ptab').innerHTML=`<thead><tr><th>Place</th>${cols.map(c=>`<th>${c[2]}</th>`).join('')}</tr></thead><tbody>${
+    shown.map(p=>`<tr><td><button class="plink" data-i="${Z.places.indexOf(p)}">${esc(p[0])}</button></td>${cols.map(([v,r])=>cell(p[v],p[r])).join('')}</tr>`).join('')}</tbody>`;
   $('#pMore').textContent=placeAll?`Show the first ${first}`:`Show all ${Z.places.length} places`;
 }
 $('#ptab').addEventListener('click',e=>{ const b=e.target.closest('.plink'); if(b) goPlace(META.summary.places[+b.dataset.i]); });
